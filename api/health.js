@@ -7,13 +7,31 @@ const { param, send } = require('./_util');
 
 async function check(name, fn) {
   const t = Date.now();
-  try { return { name, ok: true, ms: Date.now() - t, ...(await fn()) }; }
+  try { const detail = await fn(); return { name, ok: true, ms: Date.now() - t, ...detail }; }
   catch (err) { return { name, ok: false, ms: Date.now() - t, error: err.message }; }
+}
+
+// What the site actually sent back (status, final URL, size, title, how many event links), so a
+// block page, a redirect or a template change is visible without guessing.
+async function rawProbe(url) {
+  const r = await fetch(url, { headers: { accept: 'text/html', 'user-agent': 'Mozilla/5.0 (compatible; ufcprob)' }, redirect: 'follow' });
+  const body = await r.text();
+  return {
+    url, status: r.status, finalUrl: r.url, bytes: body.length,
+    title: (body.match(/<title>([\s\S]*?)<\/title>/i) || [])[1]?.trim().slice(0, 120) || null,
+    eventLinks: (body.match(/event-details\//g) || []).length,
+    tableRows: (body.match(/b-statistics__table-row/g) || []).length,
+    looksBlocked: /cloudflare|captcha|access denied|attention required|just a moment/i.test(body),
+    start: body.replace(/\s+/g, ' ').slice(0, 300),
+  };
 }
 
 module.exports = async (req, res) => {
   let completed = [], upcoming = [];
   const checks = [];
+  for (const u of ['http://ufcstats.com/statistics/events/completed', 'https://ufcstats.com/statistics/events/completed', 'http://www.ufcstats.com/statistics/events/completed']) {
+    checks.push(await check(`Raw fetch ${u}`, () => rawProbe(u)));
+  }
   checks.push(await check('UFCStats: completed events', async () => { completed = await ufc.fetchEvents('completed'); return { events: completed.length, latest: completed[0] || null }; }));
   checks.push(await check('UFCStats: upcoming events', async () => { upcoming = await ufc.fetchEvents('upcoming'); return { events: upcoming.length, next: upcoming.sort((a, b) => a.date.localeCompare(b.date))[0] || null }; }));
   if (completed[0]) checks.push(await check(`UFCStats: last event (${completed[0].name})`, async () => {
