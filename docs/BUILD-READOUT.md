@@ -23,13 +23,39 @@
 
 ## Data
 
-UFCStats.com (event pages carry every bout's result and per-fighter totals; fighter pages add
-reach, height, stance, date of birth) and ESPN's MMA scoreboard (card segments, scheduled
-rounds, live status). Events since 2014.
+- **History:** the public scrape_ufc_stats dataset on GitHub (four CSVs mirrored weekly from UFCStats).
+  - Events, results (method, round, time, scheduled rounds), per-round stats summed per fighter,
+    and the tale of the tape.
+  - 7,683 bouts since 2010 at the time of writing, every one with stats.
+  - Results list fighters by name, so ids come from the tale-of-the-tape file. The ~1% of bouts
+    involving two fighters who share a name are kept under one name id.
+- **Cards, live status and debutants:** ESPN's MMA feeds.
+  - The scoreboard gives bouts in start order, scheduled rounds and live status.
+  - The core API gives card segments.
+  - Athlete bios give height, reach, stance and birth date, used for debutants or when the
+    dataset lacks them.
+  - ESPN fighters are matched to history by name (accents, case, suffixes and word order
+    tolerated); a fighter with no match is a debutant.
+- **UFCStats.com directly:** not used. It serves a JavaScript challenge to servers.
+
+## First real backtest (25 events, 310 bouts, Oct 2026)
+
+| | Model | Elo alone | Base / coin |
+| --- | --- | --- | --- |
+| Winner log loss | 0.658 | 0.689 | 0.693 |
+| Winner Brier | 0.233 | 0.248 | 0.250 |
+| Who wins × how, log loss | 1.641 | | 1.746 |
+| Goes the distance, Brier | 0.220 | | 0.229 |
+
+Favourites won 62.6%. The finish scales fit to cKO 2.3, cSUB 2.3, α 0.75, γ 0. The grid was
+widened after real data pushed cKO to the old edge.
 
 ## Known limits
 
-- Page templates and feed shapes are unverified until `/api/health` runs against the real sites.
-- Control time isn't on UFCStats event pages; DFS control points are estimated from takedowns.
+- ESPN's feeds are undocumented. Field names were checked against a live probe (`/api/health?probe=1`).
+- The dataset updates weekly, so a card from the last few days may show ESPN's winner before the
+  method, round and time arrive.
+- Control time is now real in history; DFS control points in the simulation are still modelled
+  from takedowns.
 - Mid-card the odds stay at pre-fight values; live status is display only.
 - DFS scoring follows the common Classic format; check it against your site.

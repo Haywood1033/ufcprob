@@ -8,12 +8,15 @@ Vercel serverless functions, optional Supabase Postgres, one `app.html`.
 ## Deploy
 
 1. Import the repo in Vercel (framework preset: Other). No build step.
-2. Optional but recommended: set `DATABASE_URL` to a Supabase Postgres connection string.
-   Without it the model runs on the last 70 events fetched live.
-3. Backfill (with a database): open `/api/sync` and repeat until `remaining` and
-   `fightersRemaining` are both 0 (events since 2014, then fighter physicals).
-4. Open `/api/health` first: it fetches UFCStats and ESPN and shows what came back. The page
-   templates and feed shapes were written from memory, so this is where a change shows up.
+2. Nothing to backfill. Fight history (every UFC bout since 2010 with round-by-round stats and
+   control time, plus fighter reach, height, stance and birth date) loads from the public
+   [scrape_ufc_stats](https://github.com/Greco1899/scrape_ufc_stats) dataset on GitHub, a weekly
+   mirror of UFCStats. UFCStats itself serves a browser challenge to servers, so it isn't called.
+   Cards, running order, rounds, live status and bios for debutants come from ESPN.
+3. Optional: set `DATABASE_URL` (Supabase Postgres) to keep each card's pre-fight projection and
+   grade it on the Accuracy tab once results reach the dataset.
+4. Open `/api/health`: it loads both sources and fails (HTTP 503, `ok: false`) on empty or stale
+   data, not just on errors. It also checks how many fighters on the next card matched history.
 
 ## Routes
 
@@ -28,10 +31,10 @@ Vercel serverless functions, optional Supabase Postgres, one `app.html`.
 | `/api/live?date=` | ESPN live status for a card |
 | `/api/backtest?events=25` | Leak-free backtest |
 | `/api/grades` | Graded pre-fight snapshots |
-| `/api/sync` | History backfill (weekly cron grades too) |
+| `/api/sync` | Reloads the dataset and grades saved snapshots (weekly cron) |
 | `/api/status`, `/api/health` | What history is loaded; source checks (`?event=` audits one event) |
 
 ## Tests
 
 `npm test` runs everything against a synthetic world (`tests/fixtures.js`): fake fighters, fake
-cards, UFCStats-style HTML, the real handlers. See `docs/BUILD-READOUT.md` for the model.
+cards, served as the dataset CSVs and ESPN's feed shapes, through the real handlers. See `docs/BUILD-READOUT.md` for the model.

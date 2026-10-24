@@ -1,7 +1,6 @@
 // End to end through the real route handlers over the synthetic world.
 const test = require('node:test');
 const assert = require('node:assert/strict');
-process.env.UFC_MEMORY_EVENTS = '120';
 const { installMockFetch } = require('./fixtures');
 
 const NOW = '2026-10-24T15:00:00Z';
@@ -21,7 +20,8 @@ function call(name, { query = {}, body } = {}) {
 test('card payload: bouts, odds, segments, physicals', async () => {
   const { code, body } = await call('card');
   assert.equal(code, 200);
-  assert.equal(body.event.id, world.upcoming.id);
+  assert.equal(body.event.id, world.espnEventId(world.upcoming));
+  assert.equal(body.event.date, world.upcoming.date);
   assert.equal(body.state, 'pre');
   assert.equal(body.bouts.length, 12);
   assert.equal(body.bouts[0].rounds, 5);
@@ -33,6 +33,35 @@ test('card payload: bouts, odds, segments, physicals', async () => {
     assert.ok(Math.abs(m.A.KO + m.A.SUB + m.A.DEC + m.B.KO + m.B.SUB + m.B.DEC - 1) < 1e-9);
   }
   assert.ok(body.bouts[0].a.reachIn > 0 && body.bouts[0].a.age > 18);
+  assert.equal(body.bouts[0].a.name, world.upcoming.bouts[0].a.name);
+  assert.equal(body.bouts[0].a.id, world.upcoming.bouts[0].a.id, 'ESPN fighter matched to their history id');
+  assert.equal(body.history.matched, body.history.onCard - body.bouts.flatMap(b => [b.a, b.b]).filter(f => f.id.startsWith('espn:') || f.id.startsWith('n:')).length);
+  assert.ok(body.bouts.every(b => b.weightClass && b.weightClass !== 'Open Weight'));
+  // History stops before fight night.
+  assert.equal(body.history.bouts, world.events.filter(e => e.done).length * 12);
+});
+
+test('completed card: results from the dataset with method, round and time', async () => {
+  const done = world.events.filter(e => e.done).at(-1);
+  const { code, body } = await call('card', { query: { event: world.espnEventId(done) } });
+  assert.equal(code, 200);
+  assert.equal(body.state, 'post');
+  assert.equal(body.history.bouts, (world.events.filter(e => e.done).length - 1) * 12, 'the card\'s own bouts are not in its history');
+  const src = done.bouts[0], b = body.bouts[0];
+  assert.equal(b.result.winner, src.res.winner.id);
+  assert.equal(b.result.bucket, src.res.method === 'KO/TKO' ? 'KO' : src.res.method === 'SUB' ? 'SUB' : 'DEC');
+  assert.equal(b.result.round, src.res.round);
+  assert.equal(b.result.time, src.res.time);
+});
+
+test('events and status', async () => {
+  const ev = (await call('events')).body;
+  assert.equal(ev.upcoming[0].id, world.espnEventId(world.upcoming));
+  assert.ok(ev.completed.length >= 10);
+  const st = (await call('status')).body;
+  assert.equal(st.source, 'dataset');
+  assert.equal(st.stale, false);
+  assert.ok(st.bouts > 2000);
 });
 
 test('plays: model mode without prices, value mode with them', async () => {
@@ -62,8 +91,10 @@ test('parlay and DFS routes', async () => {
 });
 
 test('health and backtest', async () => {
-  const h = (await call('health')).body;
-  assert.ok(h.ok, JSON.stringify(h.checks.filter(c => !c.ok)));
+  const h = await call('health');
+  assert.equal(h.code, 200);
+  assert.ok(h.body.ok, JSON.stringify(h.body.checks.filter(c => !c.ok)));
+  assert.equal(h.body.checks.length, 5);
   const bt = (await call('backtest', { query: { events: '10' } })).body;
   assert.equal(bt.events, 10);
   assert.ok(bt.winner.logLoss.model < bt.winner.logLoss.coin, 'beats a coin flip');

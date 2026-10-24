@@ -1,29 +1,15 @@
 // GET /api/health — fetches every source the model depends on and reports what came back, so a
-// changed UFCStats template or ESPN feed shows up here first. ?event={id} audits one event.
-const ufc = require('../lib/ufcstats');
-const { fetchCard } = require('../lib/espn');
-const { dataStatus } = require('../lib/store');
+// stale dataset or a changed ESPN feed shows up here first. A check fails on empty data, not
+// only on errors: zero events is a failure, never "ok". ?event={espnId} audits one card.
+const { fetchAthlete } = require('../lib/espn');
+const { dataStatus, loadHistory } = require('../lib/store');
+const { listEvents, pickEvent } = require('../lib/card');
 const { param, send } = require('./_util');
 
 async function check(name, fn) {
   const t = Date.now();
   try { const detail = await fn(); return { name, ok: true, ms: Date.now() - t, ...detail }; }
   catch (err) { return { name, ok: false, ms: Date.now() - t, error: err.message }; }
-}
-
-// What the site actually sent back (status, final URL, size, title, how many event links), so a
-// block page, a redirect or a template change is visible without guessing.
-async function rawProbe(url) {
-  const r = await fetch(url, { headers: { accept: 'text/html', 'user-agent': 'Mozilla/5.0 (compatible; ufcprob)' }, redirect: 'follow' });
-  const body = await r.text();
-  return {
-    url, status: r.status, finalUrl: r.url, bytes: body.length,
-    title: (body.match(/<title>([\s\S]*?)<\/title>/i) || [])[1]?.trim().slice(0, 120) || null,
-    eventLinks: (body.match(/event-details\//g) || []).length,
-    tableRows: (body.match(/b-statistics__table-row/g) || []).length,
-    looksBlocked: /cloudflare|captcha|access denied|attention required|just a moment/i.test(body),
-    start: body.replace(/\s+/g, ' ').slice(0, 300),
-  };
 }
 
 // ?probe=1: what the candidate replacement sources return (shapes and samples), to build the
@@ -68,25 +54,41 @@ module.exports = async (req, res) => {
     try { return send(res, 200, { generatedAt: new Date().toISOString(), probe: await probe() }); }
     catch (err) { return send(res, 200, { error: err.message }); }
   }
-  let completed = [], upcoming = [];
   const checks = [];
-  for (const u of ['http://ufcstats.com/statistics/events/completed', 'https://ufcstats.com/statistics/events/completed', 'http://www.ufcstats.com/statistics/events/completed']) {
-    checks.push(await check(`Raw fetch ${u}`, () => rawProbe(u)));
-  }
-  checks.push(await check('UFCStats: completed events', async () => { completed = await ufc.fetchEvents('completed'); return { events: completed.length, latest: completed[0] || null }; }));
-  checks.push(await check('UFCStats: upcoming events', async () => { upcoming = await ufc.fetchEvents('upcoming'); return { events: upcoming.length, next: upcoming.sort((a, b) => a.date.localeCompare(b.date))[0] || null }; }));
-  if (completed[0]) checks.push(await check(`UFCStats: last event (${completed[0].name})`, async () => {
-    const ev = await ufc.fetchEvent(completed[0].id);
-    return { bouts: ev.bouts.length, completed: ev.bouts.filter(b => b.completed).length, withStats: ev.bouts.filter(b => b.stats?.a?.sig !== null && b.stats?.a?.sig !== undefined).length, methods: [...new Set(ev.bouts.map(b => b.bucket))], sample: ev.bouts[0] || null };
+  const need = (cond, msg) => { if (!cond) throw new Error(msg); };
+  checks.push(await check('History dataset (GitHub CSVs)', async () => {
+    const st = await dataStatus();
+    need(st.bouts > 1000, `only ${st.bouts} bouts parsed`);
+    need(!st.stale, `latest event is ${st.latestAgeDays} days old (${st.latestEvent?.name || 'none'}); the upstream dataset may have stopped updating`);
+    return st;
   }));
-  if (upcoming[0]) {
-    checks.push(await check(`UFCStats: next card (${upcoming[0].name})`, async () => { const ev = await ufc.fetchEvent(upcoming[0].id); return { bouts: ev.bouts.length, main: ev.bouts[0] ? `${ev.bouts[0].a.name} vs ${ev.bouts[0].b.name}` : null }; }));
-    checks.push(await check('UFCStats: fighter page', async () => { const ev = await ufc.fetchEvent(upcoming[0].id); const f = ev.bouts[0] ? await ufc.fetchFighter(ev.bouts[0].a.id) : null; return { fighter: f }; }));
-    checks.push(await check('ESPN: card for the next event', async () => { const c = await fetchCard(upcoming[0].date); return { events: c.length, bouts: c[0]?.bouts.length || 0, segments: [...new Set((c[0]?.bouts || []).map(b => b.segment))], sample: c[0]?.bouts[0] || null }; }));
+  let events = null;
+  checks.push(await check('ESPN: schedule', async () => {
+    events = await listEvents();
+    need(events.upcoming.length + events.completed.length > 0, 'no UFC events in the schedule window');
+    return { upcoming: events.upcoming.length, completed: events.completed.length, next: events.upcoming[0] || null, lastCompleted: events.completed[0] || null };
+  }));
+  let card = null;
+  checks.push(await check('ESPN: next card', async () => {
+    card = await pickEvent(param(req, 'event'));
+    need(card.bouts.length > 0, `${card.name} has no bouts listed`);
+    return { event: { id: card.id, name: card.name, date: card.date, state: card.state }, bouts: card.bouts.length, rounds: card.bouts.map(b => b.rounds), weightClasses: card.bouts.filter(b => b.weightClass).length, segments: [...new Set(card.bouts.map(b => b.segment))], main: card.bouts[0]?.names || null };
+  }));
+  if (card?.bouts.length) {
+    checks.push(await check('Card fighters matched to history', async () => {
+      const h = await loadHistory({ before: '9999-12-31' });
+      const fs = card.bouts.flatMap(b => b.fighters);
+      const missing = fs.filter(f => !h.resolve(f.name)).map(f => f.name);
+      need(missing.length <= fs.length / 2, `${missing.length} of ${fs.length} fighters not found in the dataset; names may not be matching`);
+      return { fighters: fs.length, matched: fs.length - missing.length, debutsOrUnmatched: missing };
+    }));
+    checks.push(await check('ESPN: fighter bio', async () => {
+      const f = card.bouts[0].fighters[0];
+      const a = await fetchAthlete(f.id);
+      need(a.reachIn || a.heightIn || a.dob, `no height, reach or birth date for ${f.name}`);
+      return { athlete: a };
+    }));
   }
-  checks.push(await check('History store', async () => dataStatus()));
-  let audit = null;
-  const id = param(req, 'event');
-  if (id) audit = await check(`Audit event ${id}`, async () => { const ev = await ufc.fetchEvent(id); return { name: ev.name, date: ev.date, bouts: ev.bouts }; });
-  send(res, 200, { ok: checks.every(c => c.ok), generatedAt: new Date().toISOString(), checks, audit });
+  const ok = checks.every(c => c.ok);
+  send(res, ok ? 200 : 503, { ok, generatedAt: new Date().toISOString(), checks });
 };

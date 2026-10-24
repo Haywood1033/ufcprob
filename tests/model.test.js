@@ -2,55 +2,86 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { installMockFetch } = require('./fixtures');
-const ufc = require('../lib/ufcstats');
-const { boutRows } = require('../lib/store');
+const ds = require('../lib/dataset');
+const espn = require('../lib/espn');
+const { loadHistory } = require('../lib/store');
 const { prepare, fighterAt, features, calibrate, winProb, hazards, scaledHazards, methodRoundProbs, DEFAULTS } = require('../lib/ratings');
 const { simulateCard, summarizeBout, SCORING } = require('../lib/simulator');
 const { makeCard, priceParlay, autoParlays } = require('../lib/parlay');
 const { parseBook } = require('../lib/book');
 const { parseSalaries, projections, simSample, cardFighters } = require('../lib/dfs');
 const Opt = require('../lib/dfs-optimizer');
-const { text, rows, cells } = require('../lib/html');
 
 const NOW = '2026-10-24T15:00:00Z';
 const realNow = Date.now;
 test.before(() => { const off = Date.parse(NOW) - realNow(); Date.now = () => realNow() + off; });
 test.after(() => { Date.now = realNow; });
 
-async function history() {
-  const evs = await ufc.fetchEvents('completed');
-  const all = [];
-  for (const e of evs.slice(0, 120)) all.push(...boutRows(await ufc.fetchEvent(e.id)));
-  return all.sort((a, b) => a.date.localeCompare(b.date) || b.order - a.order);
-}
+async function history() { return (await loadHistory()).bouts; }
 
-test('html helpers decode entities and read tables', () => {
-  assert.equal(text('<p> Jos&eacute; &amp; <b>Aldo</b>&#39;s </p>'), 'José & Aldo\'s');
-  const r = rows('<table><tr class="x"><td>1</td><td><p>a</p><p>b</p></td></tr><tr class="y"><td>2</td></tr></table>', /x/);
-  assert.equal(r.length, 1);
-  assert.equal(cells(r[0].html).length, 2);
+test('CSV reader: quotes, doubled quotes, commas in fields, CRLF', () => {
+  const r = ds.parseCsv('A,B,C\r\n"x, y","5\' 11""",z \r\n1,,3\n');
+  assert.deepEqual(r[0], { A: 'x, y', B: '5\' 11"', C: 'z' });
+  assert.equal(r[1].B, '');
+  assert.equal(ds.inches('5\' 11"'), 71);
+  assert.equal(ds.inches('--'), null);
+  assert.equal(ds.parseDate('Jul 13, 1978'), '1978-07-13');
+  assert.equal(ds.weightClassOf("UFC Women's Strawweight Title Bout"), "Women's Strawweight");
+  assert.equal(ds.weightClassOf('Road to 3 Flyweight TitleBout'), 'Flyweight');
+  assert.equal(ds.methodBucket('Decision - Split '), 'DEC');
+  assert.equal(ds.methodBucket('KO/TKO '), 'KO');
+  assert.equal(ds.methodBucket('Overturned'), 'OTHER');
 });
 
-test('UFCStats parsers: events, completed and upcoming bouts, fighter page', async () => {
+test('dataset: bouts with the winner first, round stats summed, control time, ids from URLs', async () => {
   const w = installMockFetch({ now: NOW });
   try {
-    const done = await ufc.fetchEvents('completed');
-    assert.ok(done.length > 150);
-    const ev = await ufc.fetchEvent(done[0].id);
-    assert.equal(ev.bouts.length, 12);
-    assert.equal(ev.bouts[0].order, 0);
-    assert.equal(ev.bouts[0].rounds, 5);
-    const b = ev.bouts.find(x => x.completed);
+    const d = await ds.loadDataset({ force: true });
+    const done = w.events.filter(e => e.done);
+    assert.equal(d.events.length, done.length);
+    assert.equal(d.bouts.length, done.length * 12);
+    const ev = done.at(-1), src = ev.bouts[0];
+    const b = d.bouts.find(x => x.fightId === src.fightId);
+    assert.equal(b.a.id, src.res.winner.id, 'winner is side a whichever order the bout was listed');
     assert.equal(b.result, 'a');
-    assert.ok(['KO', 'SUB', 'DEC'].includes(b.bucket));
-    assert.ok(b.stats.a.sig >= 0 && b.stats.b.sig >= 0);
-    const up = await ufc.fetchEvent(w.upcoming.id);
-    assert.ok(up.bouts.every(x => !x.completed && x.a.id && x.b.id));
-    const f = await ufc.fetchFighter(b.a.id);
-    assert.ok(f.reachIn > 60 && /^\d{4}-\d\d-\d\d$/.test(f.dob));
-    assert.equal(ufc.methodBucket('KO/TKO'), 'KO');
-    assert.equal(ufc.methodBucket('S-DEC'), 'DEC');
-    assert.equal(ufc.methodBucket('DQ'), 'OTHER');
+    assert.equal(b.rounds, 5);
+    assert.equal(b.endTime, src.res.time);
+    assert.deepEqual(b.stats.a, { kd: src.res.stW.kd, sig: src.res.stW.sig, td: src.res.stW.td, sub: src.res.stW.sub, ctrl: src.res.stW.td * 45 });
+    // Fighters missing from the tale-of-the-tape file keep a name id; everyone else has their URL id.
+    const noTott = new Set(w.fighters.filter((f, i) => w.NO_TOTT.has(i)).map(f => `n:${f.name.toLowerCase()}`));
+    assert.ok(d.bouts.every(x => [x.a.id, x.b.id].every(id => /^[0-9a-f]{16}$/.test(id) || noTott.has(id))));
+    assert.equal(d.fighters.size, w.fighters.length - w.NO_TOTT.size);
+    const f = d.fighters.get(b.a.id);
+    if (f) assert.ok(f.reachIn > 60 && /^\d{4}-\d\d-\d\d$/.test(f.dob));
+    // Name resolution: accents, case, word order.
+    const name = w.fighters[10].name;
+    assert.equal(d.resolve(name.toUpperCase()), w.fighters[10].id);
+    assert.equal(d.resolve(name.split(' ').reverse().join(' ')), w.fighters[10].id);
+    assert.equal(d.resolve(name.replace(/a/, 'á')), w.fighters[10].id);
+    assert.equal(d.resolve('Nobody Real'), null);
+  } finally { w.restore(); }
+});
+
+test('ESPN: schedule in running order, segments, bios', async () => {
+  const w = installMockFetch({ now: NOW });
+  try {
+    const evs = await espn.fetchSchedule('2026-10-01', '2026-10-31');
+    const up = evs.find(e => e.state === 'pre');
+    assert.equal(up.date, w.upcoming.date);
+    assert.equal(up.bouts.length, 12);
+    assert.equal(up.bouts[0].rounds, 5, 'main event first');
+    assert.equal(up.bouts[0].names[0], w.upcoming.bouts[0].a.name);
+    assert.equal(up.bouts[11].order, 11);
+    assert.equal(up.bouts[0].segment, null);
+    await espn.fillSegments(up);
+    assert.equal(up.bouts[0].segment, 'Main Card');
+    assert.equal(up.bouts[11].segment, 'Prelims');
+    const done = evs.find(e => e.state === 'post');
+    assert.ok(done.bouts.every(b => b.completed && b.winnerId));
+    const a = await espn.fetchAthlete(up.bouts[0].fighters[0].id);
+    assert.ok(a.reachIn > 60 && a.heightIn > 60 && /^\d{4}-\d\d-\d\d$/.test(a.dob));
+    assert.equal(espn.dobOf('30/3/1990'), '1990-03-30');
+    assert.equal(espn.inchesOf(`5' 7"`), 67);
   } finally { w.restore(); }
 });
 

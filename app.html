@@ -835,7 +835,7 @@ async function pollLive() {
     const e = events[0]; if (!e) return;
     const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z ]/g, '').trim();
     const m = new Map();
-    for (const b of S.data.bouts) { const lb = e.bouts.find(x => x.names.map(norm).includes(norm(b.a.name)) || x.names.map(norm).includes(norm(b.b.name))); if (lb) m.set(b.id, lb); }
+    for (const b of S.data.bouts) { const lb = e.bouts.find(x => x.id && x.id === b.id) || e.bouts.find(x => x.names.map(norm).includes(norm(b.a.name)) || x.names.map(norm).includes(norm(b.b.name))); if (lb) m.set(b.id, lb); }
     S.live = m; if (S.tab === 'card') renderCard();
   } catch { /* keep last */ }
 }

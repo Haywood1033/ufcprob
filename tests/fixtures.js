@@ -1,6 +1,6 @@
-// Synthetic MMA world for tests and layout screenshots: fake fighters and fake cards, served in
-// UFCStats' HTML templates and ESPN's scoreboard shape (lib/ufcstats.js, lib/espn.js). Nothing
-// here is real data.
+// Synthetic MMA world for tests and layout screenshots: fake fighters and fake cards, served as
+// the scrape_ufc_stats CSVs (lib/dataset.js) and ESPN's scoreboard, core and athlete shapes
+// (lib/espn.js). Nothing here is real data.
 const { makeRng } = require('../lib/rng');
 
 const FIRST = ['Alex', 'Bruno', 'Caio', 'Dario', 'Eryk', 'Felipe', 'Goran', 'Hugo', 'Ilir', 'Jonas', 'Kiko', 'Luka', 'Mateo', 'Niko', 'Omar', 'Pavel', 'Rafa', 'Sergei', 'Tariq', 'Uriah', 'Vito', 'Wes', 'Yuri', 'Zane'];
@@ -46,44 +46,59 @@ function fight(a, b, rounds, rng) {
 }
 
 const clockTxt = s => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-const p = (...xs) => xs.map(x => `<p class="b-fight-details__table-text">${x ?? ''}</p>`).join('');
-const flink = f => `<a class="b-link b-link_style_black" href="http://ufcstats.com/fighter-details/${f.id}">${f.name}</a>`;
+const csvCell = v => (/[",]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v ?? ''));
+const csv = (head, rows) => [head.join(','), ...rows.map(r => r.map(csvCell).join(','))].join('\n') + '\n';
+const longDate = d => new Date(`${d}T00:00:00Z`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+const shortDate = d => new Date(`${d}T00:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric', timeZone: 'UTC' });
+const heightOf = f => 66 + Math.round((f.reach - 66) * 0.6);
+// Fighters missing from the tale-of-the-tape file, so their physicals come from ESPN's bio.
+const NO_TOTT = new Set([5, 77]);
 
-function eventHtml(ev) {
-  const rowsHtml = ev.bouts.map(bt => {
-    const done = !!bt.res;
-    const [first, second] = done ? [bt.res.winner, bt.res.loser] : [bt.a, bt.b];
-    const sW = done ? bt.res.stW : {}, sL = done ? bt.res.stL : {};
-    return `<tr class="b-fight-details__table-row b-fight-details__table-row__hover js-fight-details-click" data-link="http://ufcstats.com/fight-details/${bt.fightId}">
-      <td class="b-fight-details__table-col">${done ? '<p class="b-fight-details__table-text"><a class="b-flag b-flag_style_green"><i class="b-flag__inner"><i class="b-flag__text">win</i></i></a></p>' : ''}</td>
-      <td class="b-fight-details__table-col l-page_align_left">${p(flink(first), flink(second))}</td>
-      <td class="b-fight-details__table-col">${done ? p(sW.kd, sL.kd) : ''}</td>
-      <td class="b-fight-details__table-col">${done ? p(sW.sig, sL.sig) : ''}</td>
-      <td class="b-fight-details__table-col">${done ? p(sW.td, sL.td) : ''}</td>
-      <td class="b-fight-details__table-col">${done ? p(sW.sub, sL.sub) : ''}</td>
-      <td class="b-fight-details__table-col l-page_align_left">${p(bt.wc + (bt.title ? ' <img src="http://1e49bc5171d173577ecd-1323f4090557a33db01577564f60846c.r80.cf1.rackcdn.com/belt.png">' : ''))}</td>
-      <td class="b-fight-details__table-col l-page_align_left">${done ? p(bt.res.method, bt.res.detail) : p('')}</td>
-      <td class="b-fight-details__table-col">${done ? p(bt.res.round) : p('')}</td>
-      <td class="b-fight-details__table-col">${done ? p(clockTxt(bt.res.time)) : p('')}</td></tr>`;
-  }).join('\n');
-  const d = new Date(`${ev.date}T00:00:00Z`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
-  return `<html><body><h2 class="b-content__title"><span class="b-content__title-highlight">${ev.name}</span></h2>
-    <ul class="b-list__box-list"><li class="b-list__box-list-item"><i class="b-list__box-item-title">Date:</i> ${d} </li><li class="b-list__box-list-item"><i class="b-list__box-item-title">Location:</i> ${ev.location} </li></ul>
-    <table class="b-fight-details__table"><thead><tr class="b-fight-details__table-row_type_head"><th>W/L</th></tr></thead><tbody>${rowsHtml}</tbody></table></body></html>`;
+// The four scrape_ufc_stats CSVs (lib/dataset.js) for every completed event.
+function datasetCsvs(events, fighters) {
+  const done = events.filter(e => e.done).reverse();
+  const evCsv = csv(['EVENT', 'URL', 'DATE', 'LOCATION'], done.map(e => [`${e.name} `, `http://ufcstats.com/event-details/${e.id}`, longDate(e.date), e.location]));
+  const res = [], st = [];
+  for (const e of done) for (const bt of e.bouts) {
+    const r = bt.res, aWon = r.winner === bt.a;
+    const outcome = bt.draw ? 'D/D' : aWon ? 'W/L' : 'L/W';
+    const bout = `${bt.a.name} vs. ${bt.b.name}`;
+    const method = { 'KO/TKO': 'KO/TKO ', SUB: 'Submission ', 'S-DEC': 'Decision - Split ', 'U-DEC': 'Decision - Unanimous ' }[r.method];
+    res.push([`${e.name} `, bout, outcome, `${bt.title ? 'UFC ' : ''}${bt.wc}${bt.title ? ' Title' : ''} Bout`, method, r.round, clockTxt(r.time), bt.rounds === 5 ? '5 Rnd (5-5-5-5-5)' : '3 Rnd (5-5-5)', 'Herb Dean', r.detail, `http://ufcstats.com/fight-details/${bt.fightId}`]);
+    for (const [f, s] of [[r.winner, r.stW], [r.loser, r.stL]]) {
+      // Totals in round 1, empty later rounds — the parser sums rounds either way.
+      for (let k = 1; k <= r.round; k++) {
+        const one = k === 1;
+        st.push([e.name, bout, `Round ${k}`, f.name, one ? `${s.kd}.0` : '0', one ? `${s.sig} of ${s.sig + 9}` : '0 of 0', '---', '0 of 0', one ? `${s.td} of ${s.td + 2}` : '0 of 0', '---', one ? s.sub : 0, 0, one ? clockTxt(s.td * 45) : '--', '', '', '', '', '', '']);
+      }
+    }
+  }
+  const tott = csv(['FIGHTER', 'HEIGHT', 'WEIGHT', 'REACH', 'STANCE', 'DOB', 'URL'], fighters.filter((f, i) => !NO_TOTT.has(i)).map(f => [f.name, `${Math.floor(heightOf(f) / 12)}' ${heightOf(f) % 12}"`, '155 lbs.', `${f.reach}.0"`, f.stance, shortDate(f.dob), `http://ufcstats.com/fighter-details/${f.id}`]));
+  return {
+    'ufc_event_details.csv': evCsv,
+    'ufc_fight_results.csv': csv(['EVENT', 'BOUT', 'OUTCOME', 'WEIGHTCLASS', 'METHOD', 'ROUND', 'TIME', 'TIME FORMAT', 'REFEREE', 'DETAILS', 'URL'], res),
+    'ufc_fight_stats.csv': csv(['EVENT', 'BOUT', 'ROUND', 'FIGHTER', 'KD', 'SIG.STR.', 'SIG.STR. %', 'TOTAL STR.', 'TD', 'TD %', 'SUB.ATT', 'REV.', 'CTRL', 'HEAD', 'BODY', 'LEG', 'DISTANCE', 'CLINCH', 'GROUND'], st),
+    'ufc_fighter_tott.csv': tott,
+  };
 }
 
-function listHtml(events) {
-  return `<table class="b-statistics__table-events"><tbody>${events.map(e => `<tr class="b-statistics__table-row"><td class="b-statistics__table-col"><i class="b-statistics__table-content"><a href="http://ufcstats.com/event-details/${e.id}" class="b-link b-link_style_black">${e.name}</a><span class="b-statistics__date">${new Date(`${e.date}T00:00:00Z`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}</span></i></td><td class="b-statistics__table-col b-statistics__table-col_style_big-top-padding">${e.location}</td></tr>`).join('')}</tbody></table>`;
-}
-
-function fighterHtml(f) {
-  const ht = 66 + (f.reach - 66) * 0.6;
-  const dob = new Date(`${f.dob}T00:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric', timeZone: 'UTC' });
-  return `<span class="b-content__title-highlight">${f.name}</span><span class="b-content__title-record">Record: 15-4-0</span>
-    <ul><li class="b-list__box-list-item b-list__box-list-item_type_block"><i class="b-list__box-item-title b-list__box-item-title_type_width">Height:</i> ${Math.floor(ht / 12)}' ${Math.round(ht % 12)}" </li>
-    <li class="b-list__box-list-item"><i class="b-list__box-item-title">Reach:</i> ${f.reach}" </li>
-    <li class="b-list__box-list-item"><i class="b-list__box-item-title">STANCE:</i> ${f.stance} </li>
-    <li class="b-list__box-list-item"><i class="b-list__box-item-title">DOB:</i> ${dob} </li></ul>`;
+const espnId = f => String(3000000 + parseInt(f.id, 16));
+const espnEventId = e => String(600000 + parseInt(e.id, 16));
+const compId = (e, i) => `${parseInt(e.id, 16)}${String(i).padStart(2, '0')}`;
+// ESPN's scoreboard for one event: bouts in start order (prelims first), no card segment (the
+// core API supplies it), weight class on every other bout.
+function espnEvent(e, { live }) {
+  const competitions = e.bouts.map((bt, i) => {
+    const post = e.done || (live && i >= 10 && i !== 11), inProg = !e.done && live && i === 11;
+    const winA = post && bt.res ? bt.res.winner === bt.a : live && i === 10;
+    return {
+      id: compId(e, i), date: new Date(Date.parse(`${e.date}T23:00:00Z`) - i * 1200e3).toISOString().replace(/:00\.000Z$/, 'Z'),
+      format: { regulation: { periods: bt.rounds } }, ...(i % 2 ? {} : { type: { abbreviation: bt.wc } }),
+      status: { period: inProg ? 2 : post ? bt.res?.round || 3 : 0, displayClock: '2:14', type: { state: post ? 'post' : inProg ? 'in' : 'pre', completed: post, detail: inProg ? 'R2 2:14' : post ? 'Final' : 'Scheduled' } },
+      competitors: [bt.a, bt.b].map((f, k) => ({ id: espnId(f), athlete: { id: espnId(f), displayName: f.name }, winner: post ? (k === 0 ? winA : !winA) : false, records: [{ summary: '15-4-0' }] })),
+    };
+  }).reverse();
+  return { id: espnEventId(e), name: e.name, date: `${e.date}T23:00Z`, status: { type: { state: e.done ? 'post' : live ? 'in' : 'pre' } }, competitions };
 }
 
 function installMockFetch({ now, live = false } = {}) {
@@ -119,25 +134,31 @@ function installMockFetch({ now, live = false } = {}) {
   const byId = new Map(events.map(e => [e.id, e]));
   const fById = new Map(fighters.map(f => [f.id, f]));
   const real = global.fetch;
+  const files = datasetCsvs(events, fighters);
+  const byEspn = new Map(fighters.map(f => [espnId(f), f]));
+  const bySeg = new Map();
+  for (const e of events) e.bouts.forEach((bt, i) => bySeg.set(compId(e, i), i < 5 ? 'Main Card' : 'Prelims'));
   const ok = body => ({ ok: true, status: 200, json: async () => body, text: async () => (typeof body === 'string' ? body : JSON.stringify(body)) });
+  const notFound = { ok: false, status: 404, json: async () => ({}), text: async () => '' };
   global.fetch = async url => {
     const u = String(url);
     let m;
-    if (u.includes('/statistics/events/completed')) return ok(listHtml(events.filter(e => e.done).reverse()));
-    if (u.includes('/statistics/events/upcoming')) return ok(listHtml(upcoming));
-    if ((m = u.match(/event-details\/([0-9a-f]+)/))) { const e = byId.get(m[1]); return e ? ok(eventHtml(e)) : { ok: false, status: 404, text: async () => '' }; }
-    if ((m = u.match(/fighter-details\/([0-9a-f]+)/))) { const f = fById.get(m[1]); return f ? ok(fighterHtml(f)) : { ok: false, status: 404, text: async () => '' }; }
-    if (u.includes('/sports/mma/ufc/scoreboard')) {
-      const e = upcoming[0];
-      if (!e) return ok({ events: [] });
-      return ok({ events: [{ id: '600' + e.id.slice(-4), name: e.name, date: `${e.date}T23:00Z`, status: { type: { state: live ? 'in' : 'pre' } },
-        competitions: e.bouts.map((bt, i) => ({ date: `${e.date}T23:00Z`, cardSegment: { description: i < 5 ? 'Main Card' : 'Prelims' }, format: { regulation: { periods: bt.rounds } },
-          status: { period: live && i === 11 ? 2 : 0, displayClock: '2:14', type: { state: live && i >= 10 ? (i === 11 ? 'in' : 'post') : 'pre', detail: live && i === 11 ? 'R2 2:14' : 'Scheduled' } },
-          competitors: [{ athlete: { displayName: bt.a.name }, winner: live && i === 10 }, { athlete: { displayName: bt.b.name }, winner: false }] })) }] });
+    if ((m = u.match(/scrape_ufc_stats\/main\/(\w+\.csv)/))) return files[m[1]] ? ok(files[m[1]]) : notFound;
+    if ((m = u.match(/\/sports\/mma\/ufc\/scoreboard\?dates=(\d{8})(?:-(\d{8}))?/))) {
+      const d = s => `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
+      const from = d(m[1]), to = d(m[2] || m[1]);
+      return ok({ events: events.filter(e => e.date >= from && e.date <= to).map(e => espnEvent(e, { live })) });
     }
-    return { ok: false, status: 404, json: async () => ({}), text: async () => '' };
+    if ((m = u.match(/leagues\/ufc\/events\/\d+\/competitions\/(\d+)$/))) return bySeg.has(m[1]) ? ok({ id: m[1], cardSegment: { description: bySeg.get(m[1]) } }) : notFound;
+    if ((m = u.match(/mma\/athletes\/(\d+)$/))) {
+      const f = byEspn.get(m[1]);
+      if (!f) return notFound;
+      const [y, mo, da] = f.dob.split('-').map(Number);
+      return ok({ athlete: { id: m[1], displayName: f.name, displayHeight: `${Math.floor(heightOf(f) / 12)}' ${heightOf(f) % 12}"`, displayReach: `${f.reach}"`, displayDOB: `${da}/${mo}/${y}`, stance: { text: f.stance }, weightClass: { text: f.wc }, gender: f.women ? 'FEMALE' : 'MALE' } });
+    }
+    return notFound;
   };
-  return { restore: () => { global.fetch = real; }, fighters, events, upcoming: upcoming[0] };
+  return { restore: () => { global.fetch = real; }, fighters, events, upcoming: upcoming[0], espnId, espnEventId, NO_TOTT };
 }
 
 module.exports = { installMockFetch, makeWorld, fight, CLASSES };
