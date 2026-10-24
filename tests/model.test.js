@@ -114,6 +114,8 @@ test('method/round probabilities sum to 1 and respect the round count', () => {
   assert.ok(Math.abs(total - 1) < 1e-9);
   assert.equal(pr.KO.length, 3);
   assert.ok(methodRoundProbs({ ko: 0, sub: 0 }, 5).DEC === 1);
+  const flat = methodRoundProbs({ ko: 0.03, sub: 0.01 }, 3), early = methodRoundProbs({ ko: 0.03, sub: 0.01, later: 0.6 }, 3);
+  assert.ok(early.DEC > flat.DEC && Math.abs(early.KO[0] - flat.KO[0]) < 1e-12, 'later-round factor only touches rounds 2+');
 });
 
 function toyBouts() {
@@ -134,6 +136,17 @@ test('simulator: win share, methods and rounds add up; DFS bonus only for winner
   assert.ok(Math.abs(s.endsInRound.reduce((a, b) => a + b, 0) + s.distance - 1) < 1e-9);
   assert.equal(s.endsInRound.length, 3);
   assert.equal(summarizeBout(sims[1]).endsInRound.length, 5);
+  // Predicted stats: ordered quantiles, over chances that fall as the line rises, and the mean
+  // when it goes the distance above the overall mean (finishes cut totals short).
+  for (const k of ['sig', 'td']) for (const side of ['A', 'B']) {
+    const d = s.stats[k][side];
+    assert.ok(d.p10 <= d.p50 && d.p50 <= d.p90);
+    assert.equal(d.mean, s[k][side]);
+    assert.ok(d.ifDistance >= d.mean);
+    d.lines.reduce((prev, l) => { assert.ok(l.over <= prev && l.over >= 0); return l.over; }, 1);
+  }
+  const td05 = s.stats.td.A.lines.find(l => l.line === 0.5).over;
+  assert.ok(Math.abs(td05 - Array.from(sims[0].tdA).filter(v => v >= 1).length / sims[0].sims) < 1e-4);
   const sim = sims[0];
   for (let k = 0; k < 200; k++) {
     if (sim.method[k] === 2) assert.equal(sim.elapsed[k], 900);

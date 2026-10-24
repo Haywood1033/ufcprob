@@ -33,6 +33,7 @@ test('card payload: bouts, odds, segments, physicals', async () => {
     assert.ok(Math.abs(m.A.KO + m.A.SUB + m.A.DEC + m.B.KO + m.B.SUB + m.B.DEC - 1) < 1e-9);
   }
   assert.ok(body.bouts[0].a.reachIn > 0 && body.bouts[0].a.age > 18);
+  for (const b of body.bouts) assert.ok(b.stats.sig.A.lines.length >= 3 && b.stats.td.B.lines.length === 4);
   assert.equal(body.bouts[0].a.name, world.upcoming.bouts[0].a.name);
   assert.equal(body.bouts[0].a.id, world.upcoming.bouts[0].a.id, 'ESPN fighter matched to their history id');
   assert.equal(body.history.matched, body.history.onCard - body.bouts.flatMap(b => [b.a, b.b]).filter(f => f.id.startsWith('espn:') || f.id.startsWith('n:')).length);

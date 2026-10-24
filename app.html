@@ -335,6 +335,14 @@ details.more[open] summary::before { transform: rotate(90deg); }
 .tile.card .val.sm { font-size: 16px; }
 .carno { display: inline-grid; place-items: center; min-width: 26px; height: 20px; padding: 0 5px; border-radius: 4px; background: var(--surface-3); color: var(--ink-2); font-size: 11.5px; font-weight: 700; }
 .two { display: grid; grid-template-columns: 1.3fr 1fr; gap: 16px; }
+.stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+@media (max-width: 900px) { .stat-grid { grid-template-columns: 1fr; } }
+.stat-head { display: grid; grid-template-columns: 1fr auto 1fr; align-items: end; gap: 12px; }
+.stat-head .lab { text-align: center; color: var(--ink-3); font-size: 12px; padding-bottom: 6px; }
+.stat-big { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.stat-big + .note { margin-top: 2px; }
+.stat-lines { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 12px; }
+.stat-lines .data td, .stat-lines .data th { padding: 6px 8px; }
 @media (max-width: 900px) { .two { grid-template-columns: 1fr; } }
 .hbar-row { display: grid; grid-template-columns: 150px 1fr 56px; gap: 10px; align-items: center; padding: 5px 0; font-size: 13px; cursor: pointer; }
 .hbar-row:hover .nm { color: var(--accent); }
@@ -776,6 +784,8 @@ function renderBreakdown() {
         <div class="mid"><div class="note">${esc(b.weightClass || '')} · ${b.rounds} rounds${b.title ? ' · title' : ''}</div><div class="split-bar"><span style="width:${b.pA * 100}%;background:${SA}">${pct(b.pA, 0)}</span><span style="width:${b.pB * 100}%;background:${SB}">${pct(b.pB, 0)}</span></div><div class="note" style="margin-top:6px">Goes the distance ${pct(b.distance, 0)} · finish ${pct(b.insideDistance, 0)}</div></div>
         <div style="text-align:right"><div class="fname big" style="color:${SB}">${esc(B.name)}</div><div class="big-prob">${pct(b.pB)}</div><div class="note">fair ${esc(b.fair.b)}</div></div></div>
     </div></div>
+    ${b.stats ? `<div class="card" style="margin-top:16px"><div class="card-h"><h2>Predicted fight stats</h2><span class="sub">Per fighter across ${S.data.sims.toLocaleString()} simulated fights, including early finishes</span></div><div class="card-b stat-grid">
+      ${statBlock(b, 'sig', 'Significant strikes landed')}${statBlock(b, 'td', 'Takedowns landed')}</div></div>` : ''}
     <div class="two" style="margin-top:16px">
       <div class="card"><div class="card-h"><h2>What drives the number</h2><span class="sub">Each input’s pull on the win probability (log-odds)</span></div><div class="card-b"><div class="chart" id="whyChart"></div></div></div>
       <div class="card"><div class="card-h"><h2>Tale of the tape</h2></div><div class="table-wrap" style="border:0;border-radius:0"><table class="data"><thead><tr><th class="l">${esc(A.name)}</th><th class="l" style="text-align:center"></th><th>${esc(B.name)}</th></tr></thead><tbody>
@@ -791,6 +801,37 @@ function renderBreakdown() {
       <div class="card"><div class="card-h"><h2>${esc(B.name)}</h2><span class="sub">How they win · how they lose</span></div><div class="card-b"><div class="grid-2"><div><div class="section-t">Wins</div>${how(B, 'rawWins')}</div><div><div class="section-t">Losses</div>${how(B, 'rawLosses')}</div></div><div class="section-t" style="margin-top:14px">Recent UFC bouts</div>${recent(B)}</div></div>
     </div>`;
   drawWhy($('#whyChart'), b.why, A, B); drawOutcomes($('#outChart'), b); drawRounds($('#roundChart'), b);
+  if (b.stats) ['sig', 'td'].forEach(k => drawStatRange($(`#range-${k}`), b, k));
+}
+
+// Predicted strikes / takedowns: the two averages, where 80% of simulated fights land, the
+// average if it goes the distance, and over chances at lines around each fighter's median.
+const last = n => n.split(' ').slice(-1)[0];
+function statBlock(b, k, title) {
+  const a = b.stats[k].A, c = b.stats[k].B, dp = k === 'td' ? 1 : 0;
+  const lines = (d, col) => `<table class="data"><thead><tr><th class="l" style="color:${col}">${esc(last(col === SA ? b.a.name : b.b.name))}</th><th>Over</th><th>Fair</th></tr></thead><tbody>${d.lines.map(l => `<tr><td class="l">${l.line}</td><td>${pct(l.over, 0)}</td><td class="dim">${l.over >= 0.02 && l.over <= 0.98 ? esc(american(l.over)) : '—'}</td></tr>`).join('')}</tbody></table>`;
+  return `<div>
+    <div class="section-t">${title}</div>
+    <div class="stat-head"><div><div class="stat-big" style="color:${SA}">${a.mean.toFixed(dp)}</div><div class="note">${esc(b.a.name)}</div></div><div class="lab">average</div><div style="text-align:right"><div class="stat-big" style="color:${SB}">${c.mean.toFixed(dp)}</div><div class="note">${esc(b.b.name)}</div></div></div>
+    <div class="chart" id="range-${k}" style="margin-top:10px"></div>
+    <p class="note">Bar: the middle 80% of simulated fights · tick: median · dot: average. If it goes the distance: ${esc(last(b.a.name))} ${a.ifDistance ?? '—'} · ${esc(last(b.b.name))} ${c.ifDistance ?? '—'}. A finish cuts the totals short, which is why the average sits below that.</p>
+    <div class="stat-lines">${lines(a, SA)}${lines(c, SB)}</div>
+  </div>`;
+}
+function drawStatRange(el, b, k) {
+  const rows = [{ d: b.stats[k].A, f: b.a, col: SA }, { d: b.stats[k].B, f: b.b, col: SB }];
+  const w = W(el), h = 92, ml = 8, mr = 8, mt = 8, mb = 22;
+  const top = Math.max(...rows.map(r => r.d.p90), k === 'td' ? 3 : 10) * 1.08;
+  const step = top > 120 ? 40 : top > 60 ? 20 : top > 24 ? 10 : top > 8 ? 2 : 1;
+  const x = v => ml + (v / top) * (w - ml - mr), rowY = i => mt + 14 + i * 28;
+  const ticks = []; for (let t = 0; t <= top; t += step) ticks.push(t);
+  el.innerHTML = `<svg viewBox="0 0 ${w} ${h}" height="${h}" role="img" aria-label="Predicted range">
+    ${ticks.map(t => `<line x1="${x(t)}" x2="${x(t)}" y1="${mt}" y2="${h - mb}" stroke="var(--grid)"/><text x="${x(t)}" y="${h - 6}" text-anchor="middle">${t}</text>`).join('')}
+    ${rows.map((r, i) => { const y = rowY(i); return `<g data-i="${i}"><rect x="${ml}" y="${y - 12}" width="${w - ml - mr}" height="24" fill="transparent"/>
+      <rect x="${x(r.d.p10)}" y="${y - 6}" width="${Math.max(3, x(r.d.p90) - x(r.d.p10))}" height="12" rx="3" fill="${r.col}" opacity="0.28"/>
+      <line x1="${x(r.d.p50)}" x2="${x(r.d.p50)}" y1="${y - 8}" y2="${y + 8}" stroke="${r.col}" stroke-width="2.5"/>
+      <circle cx="${x(r.d.mean)}" cy="${y}" r="4.5" fill="${r.col}" stroke="var(--surface)" stroke-width="2"/></g>`; }).join('')}</svg>`;
+  wireTips(el, 'g[data-i]', g => { const r = rows[+g.dataset.i]; return `<div class="t">${esc(r.f.name)}</div><div class="r">Average <b>${r.d.mean}</b></div><div class="r">Median <b>${r.d.p50}</b></div><div class="r">80% of fights <b>${r.d.p10}–${r.d.p90}</b></div><div class="r">If it goes the distance <b>${r.d.ifDistance ?? '—'}</b></div>`; });
 }
 
 // ── Accuracy ─────────────────────────────────────────────────────────────────────────────
