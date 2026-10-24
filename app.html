@@ -1,0 +1,912 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ufcprob</title>
+<meta name="description" content="UFC fight simulator: win, method and round odds, props, parlays priced in the simulation, DFS projections and fight breakdowns.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ── Design tokens ─────────────────────────────────────────────────────────────────────────
+   One palette, decided once. UI chrome uses ink/line/surface steps; the accent is the brand
+   teal; status tones are reserved for good/bad/warning meaning and always ship with a sign or
+   label. Chart series use the validated categorical steps (blue, orange, aqua, violet) and
+   never color text. Minimum text size is 12px; numbers in columns are tabular. */
+:root {
+  color-scheme: dark;
+  --bg: #0a0e1a;
+  --surface: #10162a;
+  --surface-2: #151d34;
+  --surface-3: #1c2541;
+  --line: #232d47;
+  --line-2: #33405f;
+  --ink: #e9edf5;
+  --ink-2: #b0b9cc;
+  --ink-3: #8690a8;
+  --accent: #2dd4bf;
+  --accent-wash: rgba(45, 212, 191, 0.12);
+  --pos: #4ade80; --pos-wash: rgba(74, 222, 128, 0.12);
+  --neg: #f87171; --neg-wash: rgba(248, 113, 113, 0.12);
+  --warn: #fbbf24; --warn-wash: rgba(251, 191, 36, 0.12);
+  --info: #60a5fa; --info-wash: rgba(96, 165, 250, 0.12);
+  --s1: #3987e5; /* series: blue */
+  --s2: #d95926; /* series: orange */
+  --s3: #199e70; /* series: aqua */
+  --s4: #9085e9; /* series: violet */
+  --grid: #222b42;
+  --axis: #39445f;
+  --r: 10px;
+  --r-sm: 6px;
+  --font: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { -webkit-text-size-adjust: 100%; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+body { background: var(--bg); color: var(--ink); font: 400 14px/1.5 var(--font); min-height: 100vh; -webkit-font-smoothing: antialiased; }
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+.num { font-variant-numeric: tabular-nums; }
+.muted { color: var(--ink-3); }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* ── Shell ── */
+.wrap { max-width: 1240px; margin: 0 auto; padding: 0 24px; }
+@media (max-width: 720px) { .wrap { padding: 0 16px; } }
+.topbar { position: sticky; top: 0; z-index: 30; background: rgba(10, 14, 26, 0.92); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+.topbar .wrap { display: flex; align-items: center; gap: 16px; height: 56px; }
+.brand { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 15px; letter-spacing: -0.01em; white-space: nowrap; }
+.brand svg { color: var(--accent); }
+.picker { display: flex; gap: 8px; flex: 1; min-width: 0; }
+.select { height: 34px; background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--r-sm); padding: 0 30px 0 10px; font-size: 13px; font-weight: 500; appearance: none; min-width: 0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238690a8' stroke-width='2.5'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 10px center; }
+.select:hover { border-color: var(--ink-3); }
+#eventSelect { flex: 0 1 340px; }
+.top-meta { display: flex; align-items: center; gap: 12px; margin-left: auto; font-size: 12px; color: var(--ink-3); white-space: nowrap; }
+.icon-btn { display: inline-grid; place-items: center; width: 34px; height: 34px; border-radius: var(--r-sm); border: 1px solid var(--line-2); background: var(--surface); color: var(--ink-2); }
+.icon-btn:hover { color: var(--ink); border-color: var(--ink-3); }
+.icon-btn.spin svg { animation: spin 0.9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (max-width: 720px) { .top-meta .updated, #tourSelect { display: none; } .brand span { display: none; } }
+
+.hero { padding-top: 28px; padding-bottom: 20px; }
+.hero h1 { font-size: 24px; line-height: 1.25; font-weight: 700; letter-spacing: -0.02em; }
+.hero .meta { margin-top: 6px; color: var(--ink-2); font-size: 13px; display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.hero .meta span + span::before { content: ''; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 999px; font-size: 12px; font-weight: 600; border: 1px solid var(--line-2); color: var(--ink-2); background: var(--surface); white-space: nowrap; }
+.chip .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.chip.live { color: var(--pos); border-color: rgba(74, 222, 128, 0.35); background: var(--pos-wash); }
+.chip.accent { color: var(--accent); border-color: rgba(45, 212, 191, 0.35); background: var(--accent-wash); }
+.chip.warn { color: var(--warn); border-color: rgba(251, 191, 36, 0.35); background: var(--warn-wash); }
+.chip small { font-weight: 500; color: var(--ink-3); }
+
+.tabs { position: sticky; top: 56px; z-index: 20; background: var(--bg); border-bottom: 1px solid var(--line); }
+.tabs .wrap { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+.tab { position: relative; height: 46px; padding: 0 14px; background: none; border: 0; color: var(--ink-3); font-weight: 600; font-size: 14px; white-space: nowrap; }
+.tab:hover { color: var(--ink); }
+.tab[aria-selected="true"] { color: var(--ink); }
+.tab:first-child { margin-left: -14px; }
+.tab[aria-selected="true"]::after { content: ''; position: absolute; left: 14px; right: 14px; bottom: -1px; height: 2px; border-radius: 2px; background: var(--accent); }
+main.wrap { padding-top: 24px; padding-bottom: 64px; }
+.panel[hidden] { display: none; }
+
+/* ── Building blocks ── */
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); }
+.card-h { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+.card-h h2, .card-h h3 { font-size: 14px; font-weight: 600; }
+.card-h .sub { font-size: 12px; color: var(--ink-3); }
+.card-b { padding: 16px; }
+.stack { display: grid; gap: 16px; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+@media (max-width: 900px) { .grid-3 { grid-template-columns: 1fr; } }
+@media (max-width: 720px) {
+  .tiles { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .tiles .tile:nth-child(3) { display: none; }
+  .tiles .tile { padding: 12px; }
+  .tiles .val { font-size: 16px; }
+  .tiles .val small { display: block; margin: 2px 0 0; }
+  .search { flex: 1 1 100%; }
+  .toolbar .spacer { display: none; }
+}
+.tile { padding: 14px 16px; }
+.tile .lbl { font-size: 12px; color: var(--ink-3); font-weight: 500; }
+.tile .val { font-size: 20px; font-weight: 700; margin-top: 4px; letter-spacing: -0.01em; }
+.tile .val small { font-size: 13px; font-weight: 600; color: var(--ink-2); margin-left: 6px; }
+.tile .note { font-size: 12px; color: var(--ink-3); margin-top: 2px; }
+
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 12px; }
+.toolbar .spacer { flex: 1; }
+.ctl { display: inline-flex; align-items: center; gap: 8px; }
+.search { position: relative; flex: 0 1 260px; min-width: 180px; }
+.search input { width: 100%; height: 34px; padding: 0 10px 0 32px; border-radius: var(--r-sm); border: 1px solid var(--line-2); background: var(--surface); font-size: 13px; }
+.search input::placeholder { color: var(--ink-3); }
+.search svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--ink-3); }
+.seg { display: inline-flex; padding: 3px; gap: 2px; border-radius: 8px; background: var(--surface); border: 1px solid var(--line-2); }
+.seg button { height: 26px; padding: 0 10px; border: 0; border-radius: 5px; background: none; color: var(--ink-3); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.seg button:hover { color: var(--ink); }
+.seg button[aria-pressed="true"] { background: var(--surface-3); color: var(--ink); }
+.seg-label { font-size: 12px; color: var(--ink-3); font-weight: 500; margin-right: -4px; }
+.btn { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border-radius: var(--r-sm); border: 1px solid var(--line-2); background: var(--surface); font-size: 13px; font-weight: 600; color: var(--ink); white-space: nowrap; }
+.btn:hover { border-color: var(--ink-3); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #062420; }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn.ghost { background: none; border-color: transparent; color: var(--ink-3); }
+.btn.ghost:hover { color: var(--ink); }
+.count { font-size: 12px; color: var(--ink-3); }
+
+/* ── Tables ── */
+.table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); }
+table.data { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; }
+.data th { position: sticky; top: 0; background: var(--surface-2); color: var(--ink-3); font-size: 12px; font-weight: 600; text-align: right; padding: 0 10px; height: 38px; border-bottom: 1px solid var(--line); white-space: nowrap; user-select: none; }
+.data th.l, .data td.l { text-align: left; }
+.data th.sortable { cursor: pointer; }
+.data th.sortable:hover { color: var(--ink); }
+.data th[aria-sort] { color: var(--ink); }
+.data th .arrow { display: inline-block; width: 10px; margin-left: 3px; color: var(--accent); }
+.data td { padding: 0 10px; height: 52px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.data tbody tr:last-child td { border-bottom: 0; }
+.data tbody tr.clickable { cursor: pointer; }
+.data tbody tr.clickable:hover td { background: var(--surface-2); }
+.data td.sorted { color: var(--ink); font-weight: 600; }
+.data td.dim { color: var(--ink-3); }
+.data .sticky-1 { position: sticky; left: 0; z-index: 1; background: var(--surface); }
+.data .sticky-2 { position: sticky; left: 44px; z-index: 1; background: var(--surface); box-shadow: 1px 0 0 var(--line); }
+.data th.sticky-1, .data th.sticky-2 { z-index: 2; background: var(--surface-2); }
+.data tbody tr.clickable:hover .sticky-1, .data tbody tr.clickable:hover .sticky-2 { background: var(--surface-2); }
+.rank { width: 44px; min-width: 44px; color: var(--ink-3); text-align: center !important; }
+.pname { font-weight: 600; color: var(--ink); }
+.psub { font-size: 12px; color: var(--ink-3); margin-top: 1px; display: flex; gap: 8px; align-items: center; }
+.tag { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 7px; border-radius: 4px; font-size: 11.5px; font-weight: 600; border: 1px solid var(--line-2); color: var(--ink-2); white-space: nowrap; }
+.tag.pos { color: var(--pos); border-color: rgba(74, 222, 128, 0.3); background: var(--pos-wash); }
+.tag.neg { color: var(--neg); border-color: rgba(248, 113, 113, 0.3); background: var(--neg-wash); }
+.tag.warn { color: var(--warn); border-color: rgba(251, 191, 36, 0.3); background: var(--warn-wash); }
+.tag.info { color: var(--info); border-color: rgba(96, 165, 250, 0.3); background: var(--info-wash); }
+.tags { display: flex; gap: 4px; justify-content: flex-start; }
+.conf { display: inline-flex; gap: 2px; vertical-align: middle; }
+.conf i { width: 4px; height: 12px; border-radius: 1px; background: var(--line-2); }
+.conf.mid i:nth-child(-n+2), .conf.high i { background: var(--ink-2); }
+.conf.low i:first-child { background: var(--warn); }
+
+/* ── Player drawer ── */
+.scrim { position: fixed; inset: 0; background: rgba(3, 6, 14, 0.6); z-index: 40; opacity: 0; pointer-events: none; transition: opacity 0.2s; }
+.scrim.open { opacity: 1; pointer-events: auto; }
+.drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(480px, 100vw); z-index: 41; background: var(--surface); border-left: 1px solid var(--line); box-shadow: var(--shadow); transform: translateX(100%); transition: transform 0.22s ease; display: flex; flex-direction: column; }
+.drawer.open { transform: none; }
+.drawer-h { display: flex; align-items: flex-start; gap: 12px; padding: 18px 20px; border-bottom: 1px solid var(--line); }
+.drawer-h h2 { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; }
+.drawer-h .sub { font-size: 13px; color: var(--ink-3); margin-top: 2px; }
+.drawer-h .icon-btn { margin-left: auto; flex: none; }
+.drawer-b { overflow-y: auto; padding: 18px 20px 32px; display: grid; gap: 22px; }
+.section-t { font-size: 12px; font-weight: 600; color: var(--ink-3); margin-bottom: 10px; }
+.kv { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--r-sm); overflow: hidden; }
+.kv > div { background: var(--surface); padding: 10px 12px; }
+.kv .k { font-size: 12px; color: var(--ink-3); }
+.kv .v { font-size: 15px; font-weight: 600; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.signal { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: start; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.signal:last-child { border-bottom: 0; }
+.signal p { font-size: 13px; color: var(--ink-2); }
+
+/* ── Matchups ── */
+.groups { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+.group-h { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--ink-3); }
+.group-h strong { color: var(--ink); font-size: 13px; font-weight: 600; }
+.group-h .tag { margin-left: auto; }
+.mrow { display: grid; grid-template-columns: 1fr 64px 64px; align-items: center; gap: 8px; padding: 9px 14px; border-bottom: 1px solid var(--line); font-size: 13px; }
+.mrow.with-book { grid-template-columns: minmax(0, 1fr) 50px 48px 36px 54px; gap: 6px; }
+.mrow:last-child { border-bottom: 0; }
+.mrow.head { padding: 7px 14px; font-size: 11.5px; color: var(--ink-3); font-weight: 600; }
+.mrow > :not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
+.mrow .nm { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mrow.fav .nm { font-weight: 700; }
+.split { display: flex; gap: 2px; height: 22px; margin: 12px 14px 10px; }
+.split > span { display: grid; place-items: center; min-width: 4px; color: #fff; font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; overflow: hidden; white-space: nowrap; }
+.split > span:first-child { border-radius: 4px 0 0 4px; }
+.split > span:last-child { border-radius: 0 4px 4px 0; }
+.sw { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 7px; vertical-align: 0; flex: none; }
+.group-f { padding: 8px 14px; font-size: 12px; color: var(--ink-3); border-top: 1px solid var(--line); }
+.mrow.pickable { cursor: pointer; }
+.mrow.pickable:hover { background: var(--surface-2); }
+.mrow.picked { background: var(--accent-wash); box-shadow: inset 3px 0 0 var(--accent); }
+.mrow .add { display: inline-grid; place-items: center; width: 18px; height: 18px; margin-right: 6px; border-radius: 4px; border: 1px solid var(--line-2); color: var(--ink-3); font-size: 13px; line-height: 1; vertical-align: -3px; }
+.mrow.picked .add { background: var(--accent); border-color: var(--accent); color: #062420; }
+.slip-legs { display: grid; gap: 0; }
+.slip-leg { display: grid; grid-template-columns: 1fr auto auto auto; gap: 14px; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--line); font-size: 13px; }
+.slip-leg:last-child { border-bottom: 0; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 1px; background: var(--line); border-top: 1px solid var(--line); }
+.stats > div { background: var(--surface); padding: 12px 16px; }
+.stats .k { font-size: 12px; color: var(--ink-3); }
+.stats .v { font-size: 17px; font-weight: 700; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.stats .v small { font-size: 12px; font-weight: 500; color: var(--ink-3); margin-left: 4px; }
+.auto-row { display: grid; grid-template-columns: 1fr auto auto auto auto; gap: 14px; align-items: center; padding: 10px 16px; border-top: 1px solid var(--line); font-size: 13px; }
+@media (max-width: 720px) { .auto-row { grid-template-columns: 1fr auto; } .auto-row .hide-sm { display: none; } .slip-leg { grid-template-columns: 1fr auto auto; } .slip-leg .hide-sm { display: none; } }
+.lineups { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.lu-row { display: grid; grid-template-columns: 1fr 64px 52px; gap: 8px; padding: 7px 14px; border-bottom: 1px solid var(--line); font-size: 13px; }
+.lu-row > :not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
+.lu-row.head { font-size: 11.5px; color: var(--ink-3); font-weight: 600; }
+.lu-f { display: flex; justify-content: space-between; padding: 9px 14px; font-size: 12px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.lk { display: inline-flex; gap: 4px; }
+.lk button { width: 26px; height: 24px; border-radius: 5px; border: 1px solid var(--line-2); background: none; color: var(--ink-3); font-size: 12px; font-weight: 700; }
+.lk button:hover { color: var(--ink); border-color: var(--ink-3); }
+.lk button.on-lock { background: var(--pos-wash); border-color: rgba(74, 222, 128, 0.5); color: var(--pos); }
+.lk button.on-ex { background: var(--neg-wash); border-color: rgba(248, 113, 113, 0.5); color: var(--neg); }
+.progress { height: 6px; border-radius: 3px; background: var(--surface-3); overflow: hidden; margin-top: 10px; }
+.progress > i { display: block; height: 100%; background: var(--accent); transition: width 0.2s; }
+.callout { border-left: 3px solid var(--accent); background: var(--surface); border-radius: 0 var(--r-sm) var(--r-sm) 0; padding: 12px 16px; color: var(--ink-2); font-size: 13.5px; line-height: 1.6; margin-bottom: 14px; max-width: 110ch; }
+.section-head { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 28px 0 12px; }
+.section-head:first-child { margin-top: 0; }
+.section-head h2 { font-size: 17px; font-weight: 700; letter-spacing: -0.01em; }
+.plays { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; }
+@media (max-width: 720px) { .plays { grid-template-columns: 1fr; } }
+.play { display: grid; grid-template-rows: auto 1fr; }
+.play-h { display: grid; grid-template-columns: 28px 1fr auto; gap: 10px; align-items: start; padding: 14px 16px 10px; }
+.play-rank { width: 24px; height: 24px; border-radius: 6px; background: var(--surface-3); color: var(--ink-2); font-size: 12px; font-weight: 700; display: grid; place-items: center; }
+.play-name { font-weight: 700; font-size: 15px; }
+.play-sub { font-size: 12px; color: var(--ink-3); margin-top: 2px; }
+.play-prob { text-align: right; }
+.play-prob .big { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.play-prob .small { font-size: 12px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.play ul { margin: 0; padding: 0 16px 14px 54px; color: var(--ink-2); font-size: 12.5px; line-height: 1.55; }
+.play li { margin-bottom: 3px; }
+.play .bookline { margin: 0 16px 10px 54px; font-size: 12px; }
+.tickets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 900px) { .tickets { grid-template-columns: 1fr; } }
+.leg { display: flex; justify-content: space-between; gap: 10px; padding: 8px 16px; border-top: 1px solid var(--line); font-size: 13px; }
+.leg span:last-child { color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.alts { padding: 10px 16px 14px; border-top: 1px solid var(--line); font-size: 12px; color: var(--ink-3); line-height: 1.6; }
+.mode-banner { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 12px 16px; margin-bottom: 20px; }
+.edge-pos { color: var(--pos); font-weight: 600; }
+.edge-neg { color: var(--ink-3); }
+.drop { border: 1px dashed var(--line-2); border-radius: var(--r); padding: 18px; display: flex; flex-wrap: wrap; gap: 14px; align-items: center; color: var(--ink-2); font-size: 13px; }
+.drop.over { border-color: var(--accent); background: var(--accent-wash); }
+.drop code { font-size: 12px; background: var(--surface-2); padding: 2px 6px; border-radius: 4px; color: var(--ink-2); }
+
+/* ── Weather ── */
+.wx-hero { display: grid; grid-template-columns: 1.4fr 1fr; gap: 0; }
+.wx-hero > div { padding: 20px; }
+.wx-hero > div + div { border-left: 1px solid var(--line); }
+@media (max-width: 900px) { .wx-hero { grid-template-columns: 1fr; } .wx-hero > div + div { border-left: 0; border-top: 1px solid var(--line); } }
+.verdict-k { font-size: 12px; font-weight: 600; color: var(--ink-3); }
+.verdict { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; margin-top: 6px; line-height: 1.25; }
+.verdict-sub { color: var(--ink-2); margin-top: 8px; font-size: 13px; max-width: 60ch; }
+.meter { height: 8px; border-radius: 4px; background: rgba(57, 135, 229, 0.18); overflow: hidden; margin-top: 8px; }
+.meter > i { display: block; height: 100%; background: var(--s1); border-radius: 4px; }
+.facts { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 18px; }
+.facts .k { font-size: 12px; color: var(--ink-3); }
+.facts .v { font-size: 15px; font-weight: 600; margin-top: 2px; }
+.days { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 900px) { .days { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.day { text-align: left; padding: 14px; border-radius: var(--r); border: 1px solid var(--line); background: var(--surface); display: grid; gap: 8px; }
+.day:hover { border-color: var(--line-2); }
+.day[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.day .dname { display: flex; justify-content: space-between; align-items: center; font-weight: 600; font-size: 13px; }
+.day .dname span { font-size: 12px; color: var(--ink-3); font-weight: 500; }
+.day .dmain { display: flex; align-items: center; gap: 10px; }
+.day .temp { font-size: 20px; font-weight: 700; }
+.day .temp small { font-size: 13px; color: var(--ink-3); font-weight: 500; margin-left: 2px; }
+.day .drow { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--ink-2); white-space: nowrap; }
+.day .drow span:first-child { color: var(--ink-3); }
+.chart-card .card-b { padding: 12px 16px 14px; }
+.chart { position: relative; width: 100%; }
+.chart svg { display: block; width: 100%; overflow: visible; }
+.chart text { fill: var(--ink-3); font-size: 11.5px; font-family: var(--font); }
+.legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; color: var(--ink-2); }
+.legend i { display: inline-block; width: 14px; height: 2px; border-radius: 1px; vertical-align: middle; margin-right: 6px; }
+.legend i.band { height: 10px; border-radius: 2px; opacity: 0.35; }
+.legend i.box { width: 10px; height: 10px; border-radius: 2px; }
+.wx-two { display: grid; grid-template-columns: 1fr 300px; gap: 16px; }
+@media (max-width: 900px) { .wx-two { grid-template-columns: 1fr; } }
+.brief { max-width: 74ch; }
+.brief h3 { font-size: 15px; font-weight: 600; margin: 22px 0 8px; }
+.brief h3:first-child { margin-top: 0; }
+.brief p { color: var(--ink-2); font-size: 14px; line-height: 1.65; margin-bottom: 10px; }
+.brief ul { padding-left: 18px; color: var(--ink-2); line-height: 1.65; }
+.brief li { margin-bottom: 6px; }
+details.more summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--ink-2); padding: 12px 16px; list-style: none; display: flex; align-items: center; gap: 6px; }
+details.more summary::before { content: '›'; display: inline-block; transition: transform 0.15s; font-size: 16px; }
+details.more[open] summary::before { transform: rotate(90deg); }
+
+/* ── Tooltip, states ── */
+.tip { position: fixed; z-index: 60; pointer-events: none; background: var(--surface-3); border: 1px solid var(--line-2); border-radius: 8px; padding: 8px 10px; font-size: 12px; color: var(--ink); box-shadow: var(--shadow); opacity: 0; transition: opacity 0.1s; max-width: 260px; }
+.tip.on { opacity: 1; }
+.tip .t { font-weight: 600; margin-bottom: 4px; }
+.tip .r { display: flex; justify-content: space-between; gap: 14px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.tip .r b { color: var(--ink); font-weight: 600; }
+.tip .sw { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; }
+.skel { background: linear-gradient(90deg, var(--surface) 0%, var(--surface-2) 50%, var(--surface) 100%); background-size: 200% 100%; animation: sh 1.4s infinite; border-radius: var(--r); }
+@keyframes sh { to { background-position: -200% 0; } }
+.state { padding: 48px 24px; text-align: center; color: var(--ink-2); }
+.state h3 { font-size: 16px; color: var(--ink); margin-bottom: 6px; }
+.state p { max-width: 56ch; margin: 0 auto; font-size: 13px; }
+.state.err h3 { color: var(--neg); }
+.state pre { text-align: left; max-width: 640px; margin: 14px auto 0; padding: 12px; font-size: 12px; background: var(--surface-2); border-radius: var(--r-sm); color: var(--ink-3); white-space: pre-wrap; }
+.note { font-size: 12px; color: var(--ink-3); line-height: 1.55; }
+.note b { color: var(--ink-2); font-weight: 600; }
+.foot { margin-top: 14px; }
+
+/* ── nascarprob additions ── */
+.tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 900px) { .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.tile.card .val.sm { font-size: 16px; }
+.carno { display: inline-grid; place-items: center; min-width: 26px; height: 20px; padding: 0 5px; border-radius: 4px; background: var(--surface-3); color: var(--ink-2); font-size: 11.5px; font-weight: 700; }
+.two { display: grid; grid-template-columns: 1.3fr 1fr; gap: 16px; }
+@media (max-width: 900px) { .two { grid-template-columns: 1fr; } }
+.hbar-row { display: grid; grid-template-columns: 150px 1fr 56px; gap: 10px; align-items: center; padding: 5px 0; font-size: 13px; cursor: pointer; }
+.hbar-row:hover .nm { color: var(--accent); }
+.hbar-row .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.hbar-row .bar { height: 14px; border-radius: 0 4px 4px 0; background: var(--s1); min-width: 2px; }
+.hbar-row .v { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+.paste { width: 100%; min-height: 120px; resize: vertical; background: var(--surface-2); border: 1px solid var(--line-2); border-radius: var(--r-sm); padding: 10px 12px; font: 12.5px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--ink); }
+.paste:focus { outline: none; border-color: var(--accent); }
+.skipped { margin-top: 8px; font-size: 12px; color: var(--ink-3); }
+.skipped li { margin-left: 16px; }
+.h2h-pick { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.h2h-pick .select { min-width: 200px; }
+.big-prob { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.split-bar { display: flex; height: 26px; border-radius: 5px; overflow: hidden; margin-top: 10px; }
+.split-bar > span { display: grid; place-items: center; color: #fff; font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.stackbar { display: flex; height: 10px; border-radius: 3px; overflow: hidden; background: var(--surface-3); min-width: 120px; }
+.stackbar > i { display: block; height: 100%; }
+.live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--pos); display: inline-block; margin-right: 6px; animation: pulse 1.4s infinite; }
+@keyframes pulse { 50% { opacity: 0.35; } }
+.posdelta.up { color: var(--pos); } .posdelta.down { color: var(--neg); }
+
+/* ── ufcprob additions ── */
+.bouts { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; }
+.bout { cursor: pointer; transition: border-color .15s; padding-bottom: 2px; }
+.bout:hover { border-color: var(--line-2); }
+.bout-h { display: flex; justify-content: space-between; padding: 10px 14px 6px; font-size: 12px; color: var(--ink-3); font-weight: 600; }
+.frow { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 6px 14px; }
+.fname { font-weight: 600; font-size: 14px; color: var(--ink-2); }
+.frow.fav .fname { color: var(--ink); }
+.fname.big { font-size: 17px; font-weight: 700; }
+.fprob { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--ink-2); }
+.frow.fav .fprob { color: var(--ink); }
+.bout-f { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; padding: 10px 14px 12px; font-size: 12px; color: var(--ink-3); }
+.bout-f .spacer { flex: 1; }
+.face { display: grid; grid-template-columns: 1fr 1.4fr 1fr; gap: 20px; align-items: center; }
+.face .mid { text-align: center; }
+@media (max-width: 720px) { .face { grid-template-columns: 1fr 1fr; } .face .mid { grid-column: 1 / -1; order: 3; } }
+.cmp { display: grid; gap: 10px; }
+.cmp-row { display: grid; grid-template-columns: 52px 1fr 170px 1fr 52px; gap: 10px; align-items: center; font-size: 13px; }
+.cmp-row .v { font-variant-numeric: tabular-nums; font-weight: 600; }
+.cmp-row .v:last-child { text-align: right; }
+.cmp-row .lab { text-align: center; color: var(--ink-3); font-size: 12px; }
+.cmp-row .bar { height: 12px; background: var(--surface-3); border-radius: 3px; overflow: hidden; display: flex; }
+.cmp-row .bar.l { justify-content: flex-end; }
+.cmp-row .bar.l i { background: var(--s1); }
+.cmp-row .bar.r i { background: var(--s2); }
+.cmp-row .bar i { display: block; height: 100%; }
+@media (max-width: 720px) { .cmp-row { grid-template-columns: 40px 1fr 96px 1fr 40px; gap: 6px; } }
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.rec-row { display: grid; grid-template-columns: 26px 1fr auto auto; gap: 10px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+.rec-row:last-child { border-bottom: 0; }
+.rec-row .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.data tr.pair-2 td { border-bottom: 1px solid var(--line-2); }
+.data tr.pair-1 td { border-bottom: 1px dashed var(--line); }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="wrap">
+    <div class="brand">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21V3M21 21V3M3 8h18M3 16h18"/></svg>
+      <span>ufcprob</span>
+    </div>
+    <div class="picker">
+      <label class="sr-only" for="eventSelect">Event</label>
+      <select class="select" id="eventSelect"><option value="">Next card</option></select>
+    </div>
+    <div class="top-meta">
+      <span class="updated" id="updated"></span>
+      <button class="icon-btn" id="refresh" title="Refresh" aria-label="Refresh data">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<section class="wrap hero" id="hero" aria-live="polite">
+  <div class="skel" style="height:30px;width:360px;max-width:100%"></div>
+  <div class="skel" style="height:16px;width:480px;max-width:100%;margin-top:10px"></div>
+</section>
+
+<nav class="tabs" aria-label="Sections">
+  <div class="wrap" role="tablist">
+    <button class="tab" role="tab" data-tab="card" aria-selected="true">This card</button>
+    <button class="tab" role="tab" data-tab="odds" aria-selected="false">Odds</button>
+    <button class="tab" role="tab" data-tab="plays" aria-selected="false">Best plays</button>
+    <button class="tab" role="tab" data-tab="parlays" aria-selected="false">Parlays</button>
+    <button class="tab" role="tab" data-tab="dfs" aria-selected="false">DFS builder</button>
+    <button class="tab" role="tab" data-tab="breakdown" aria-selected="false">Fight breakdown</button>
+    <button class="tab" role="tab" data-tab="accuracy" aria-selected="false">Accuracy</button>
+  </div>
+</nav>
+
+<main class="wrap">
+  <section class="panel" id="panel-card" role="tabpanel"></section>
+  <section class="panel" id="panel-odds" role="tabpanel" hidden></section>
+  <section class="panel" id="panel-plays" role="tabpanel" hidden></section>
+  <section class="panel" id="panel-parlays" role="tabpanel" hidden></section>
+  <section class="panel" id="panel-dfs" role="tabpanel" hidden></section>
+  <section class="panel" id="panel-breakdown" role="tabpanel" hidden></section>
+  <section class="panel" id="panel-accuracy" role="tabpanel" hidden></section>
+</main>
+
+<div class="tip" id="tip" role="tooltip"></div>
+
+<script>
+'use strict';
+// ── State ────────────────────────────────────────────────────────────────────────────────
+const qs = new URLSearchParams(location.search);
+const S = {
+  event: qs.get('event') || '', tab: qs.get('tab') || 'card',
+  data: null, errors: {}, fmt: 'pct',
+  book: '', plays: null, playsErr: null, playsLoading: false, playsKey: null,
+  bout: null,
+  slip: [], slipRes: null, slipErr: null, legBout: '', legMarket: 'win|A',
+  dfs: null, dfsErr: null, dfsLoading: false, salaryCsv: '', salaryName: '',
+  dkCount: 20, dkExposure: 0.5, dkUnique: 2, dkContest: 'cash', dkOpp: false, dkLocks: new Set(), dkExcludes: new Set(), dkSort: { key: 'points', dir: -1 }, dkResult: null, dkBusy: false, dkProgress: null,
+  backtest: null, btLoading: false, btErr: null, grades: null, live: null,
+};
+
+// ── Helpers ──────────────────────────────────────────────────────────────────────────────
+const $ = (sel, root = document) => root.querySelector(sel);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const pct = (p, d = 1) => (p === null || p === undefined || isNaN(p) ? '—' : p > 0 && p < 0.0005 ? '<0.1%' : p >= 0.9995 && p < 1 ? '>99.9%' : `${(p * 100).toFixed(d)}%`);
+const signed = (v, d = 2) => (v === null || v === undefined || isNaN(v) ? '—' : `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(d)}`);
+function american(p) { if (!p || p <= 0 || p >= 1) return '—'; if (p >= 0.5) return `−${Math.round((100 * p) / (1 - p))}`; const v = Math.round((100 * (1 - p)) / p); return v >= 100000 ? '—' : `+${v}`; }
+const probOut = p => (S.fmt === 'odds' ? american(p) : pct(p));
+const decToAmerican = d => (!d || d <= 1 ? '—' : d >= 2 ? `+${Math.round((d - 1) * 100)}` : `−${Math.round(100 / (d - 1))}`);
+const fmtDate = iso => new Date(`${String(iso).slice(0, 10)}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+const shortDate = iso => new Date(`${String(iso).slice(0, 10)}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit', timeZone: 'UTC' });
+const clock = s => (s === null || s === undefined ? '' : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`);
+const rec = r => `${r.w}-${r.l}${r.d ? `-${r.d}` : ''}`;
+const height = h => (h ? `${Math.floor(h / 12)}′${h % 12}″` : '—');
+const ICON = {
+  close: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>',
+  upload: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3m0 0L7 8m5-5 5 5"/><path d="M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/></svg>',
+  play: '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4v16l13-8z"/></svg>',
+};
+const boutById = id => S.data?.bouts.find(b => b.id === id);
+const METHOD_LABEL = { KO: 'KO/TKO', SUB: 'Submission', DEC: 'Decision' };
+
+const tip = $('#tip');
+function showTip(html, x, y) {
+  tip.innerHTML = html; tip.classList.add('on');
+  const r = tip.getBoundingClientRect();
+  let left = x + 14, top = y + 14;
+  if (left + r.width > innerWidth - 8) left = x - r.width - 14;
+  if (top + r.height > innerHeight - 8) top = y - r.height - 14;
+  tip.style.left = `${Math.max(8, left)}px`; tip.style.top = `${Math.max(8, top)}px`;
+}
+const hideTip = () => tip.classList.remove('on');
+document.addEventListener('mouseover', e => { const el = e.target.closest('[data-tip]'); if (el) { const r = el.getBoundingClientRect(); showTip(el.dataset.tip, r.left, r.bottom - 6); } });
+document.addEventListener('mouseout', e => { if (e.target.closest('[data-tip]')) hideTip(); });
+addEventListener('scroll', hideTip, true);
+
+const withEvent = p => `${p}${p.includes('?') ? '&' : '?'}${S.event ? `event=${encodeURIComponent(S.event)}` : ''}`;
+async function api(path) { const res = await fetch(withEvent(path)); let b = null; try { b = await res.json(); } catch {} if (!res.ok) throw new Error(b?.error || `${res.status} ${res.statusText}`); return b; }
+async function apiPost(path, payload) { const res = await fetch(withEvent(path), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) }); let b = null; try { b = await res.json(); } catch {} if (!res.ok) throw new Error(b?.error || `${res.status} ${res.statusText}`); return b; }
+const stateHtml = (kind, title, text, detail) => `<div class="card state ${kind === 'err' ? 'err' : ''}"><h3>${esc(title)}</h3><p>${text}</p>${detail ? `<pre>${esc(detail)}</pre>` : ''}</div>`;
+const store = { get: k => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch {} } };
+const evKey = k => `ufcprob-${k}-${S.data?.event.id || S.event || 'next'}`;
+const W = el => Math.max(260, Math.floor(el.getBoundingClientRect().width));
+function colPath(x, y, w, h) { const r = Math.min(4, w / 2, h); if (h <= 0) return ''; return `M${x},${y + h}V${y + r}Q${x},${y} ${x + r},${y}H${x + w - r}Q${x + w},${y} ${x + w},${y + r}V${y + h}Z`; }
+function wireTips(el, sel, html) { el.querySelectorAll(sel).forEach(g => { g.addEventListener('mousemove', e => showTip(html(g), e.clientX, e.clientY)); g.addEventListener('mouseleave', hideTip); }); }
+const SA = 'var(--s1)', SB = 'var(--s2)';
+
+// ── Hero ─────────────────────────────────────────────────────────────────────────────────
+function renderHero() {
+  const d = S.data;
+  if (!d) { if (S.errors.card) $('#hero').innerHTML = '<h1>ufcprob</h1><div class="meta"><span>Couldn’t load the card.</span></div>'; return; }
+  const main = d.bouts[0];
+  const stateChip = d.state === 'in' ? '<span class="chip live"><span class="dot"></span>Live</span>' : d.state === 'post' ? '<span class="chip">Final</span>' : `<span class="chip accent">${d.event.start ? `Main card ${new Date(d.event.start).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' })}` : 'Upcoming'}</span>`;
+  $('#hero').innerHTML = `<h1>${esc(d.event.name)}</h1>
+    <div class="meta"><span>${esc(fmtDate(d.event.date))}</span>${d.event.location ? `<span>${esc(d.event.location)}</span>` : ''}${main ? `<span>Main event: ${esc(main.a.name)} vs ${esc(main.b.name)}</span>` : ''}</div>
+    <div class="chips">${stateChip}<span class="chip">${d.bouts.length} bouts</span>${main?.title ? '<span class="chip warn">Title fight</span>' : ''}<span class="chip">${d.sims.toLocaleString()} sims per bout</span><span class="chip">${d.history.bouts.toLocaleString()} past bouts</span></div>`;
+  $('#updated').textContent = `Updated ${new Date(d.generatedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
+}
+
+// ── This card ────────────────────────────────────────────────────────────────────────────
+function liveFor(b) { const l = S.live?.get(b.id) || b.live; return l; }
+function boutCard(b) {
+  const l = liveFor(b), res = b.result;
+  const fav = b.pA >= b.pB ? 'a' : 'b';
+  const status = res ? `<span class="tag ${res.nc || res.draw ? '' : 'pos'}">${res.draw ? 'Draw' : res.nc ? 'No contest' : `${esc(res.winner === b.a.id ? b.a.name : b.b.name)} · ${esc(res.method)} R${res.round} ${clock(res.time)}`}</span>`
+    : l?.state === 'in' ? `<span class="tag pos"><span class="live-dot"></span>${esc(l.detail || `R${l.round}`)}</span>` : l?.state === 'post' ? `<span class="tag pos">${esc(l.winner ? `${l.winner} wins` : 'Final')}${l.result ? ` · ${esc(l.result)}` : ''}</span>` : '';
+  const row = (f, p, side) => `<div class="frow ${side === fav ? 'fav' : ''}"><div><div class="fname">${esc(f.name)}</div><div class="psub">${rec(f.record)} UFC · Elo ${f.elo}${f.age ? ` · ${f.age.toFixed(0)} yrs` : ''}</div></div><div class="fprob">${probOut(p)}</div></div>`;
+  return `<div class="card bout" data-bout="${esc(b.id)}" tabindex="0">
+    <div class="bout-h"><span>${esc(b.weightClass || 'Bout')}${b.title ? ' <span class="tag warn">Title</span>' : ''}</span><span>${b.rounds} rounds</span></div>
+    ${row(b.a, b.pA, 'a')}${row(b.b, b.pB, 'b')}
+    <div class="split-bar" style="margin:4px 14px 0;height:8px"><span style="width:${b.pA * 100}%;background:${SA}"></span><span style="width:${b.pB * 100}%;background:${SB}"></span></div>
+    <div class="bout-f"><span>Distance ${pct(b.distance, 0)}</span><span>KO ${pct(b.methods.A.KO + b.methods.B.KO, 0)}</span><span>Sub ${pct(b.methods.A.SUB + b.methods.B.SUB, 0)}</span>${status ? `<span class="spacer"></span>${status}` : ''}</div>
+  </div>`;
+}
+function renderCard() {
+  const el = $('#panel-card');
+  if (!S.data) { el.innerHTML = S.errors.card ? stateHtml('err', 'The card didn’t load', 'The card endpoint returned an error.', S.errors.card) : '<div class="skel" style="height:420px"></div>'; return; }
+  const segs = [...new Set(S.data.bouts.map(b => b.segment))];
+  el.innerHTML = segs.map(sg => `<div class="section-head"><h2>${esc(sg)}</h2><span class="count">${S.data.bouts.filter(b => b.segment === sg).length} bouts</span></div>
+    <div class="bouts">${S.data.bouts.filter(b => b.segment === sg).map(boutCard).join('')}</div>`).join('') +
+    `<p class="note foot">Win chances are shares of ${S.data.sims.toLocaleString()} simulated fights per bout. Click a bout for the full breakdown. Fighter records count UFC bouts in the stored history.</p>`;
+}
+
+// ── Odds ─────────────────────────────────────────────────────────────────────────────────
+function bookBox() {
+  const b = S.plays?.book;
+  return `<div class="card"><div class="card-h"><h2>Your prices</h2><span class="sub">Paste odds to rank by value (saved in this browser)</span></div>
+    <div class="card-b"><textarea class="paste" id="bookText" spellcheck="false" placeholder="One price per line:&#10;Fighter Name, ml, -150&#10;Fighter Name, ko, +200      (also: sub, dec, itd)&#10;Fighter A vs Fighter B, distance, -120&#10;Fighter A vs Fighter B, over 2.5, -110">${esc(S.book)}</textarea>
+      <div class="toolbar" style="margin:10px 0 0"><button class="btn primary" id="bookApply">Price these</button><button class="btn ghost" id="bookClear">Clear</button>
+        <span class="count">${b ? `${b.matched} price${b.matched === 1 ? '' : 's'} matched${b.skipped.length ? ` · ${b.skipped.length} skipped` : ''}` : 'American or decimal odds.'}</span></div>
+      ${b?.skipped?.length ? `<ul class="skipped">${b.skipped.slice(0, 8).map(s => `<li>${esc(s.line)} — ${esc(s.why)}</li>`).join('')}</ul>` : ''}</div></div>`;
+}
+function bookPrice(bout, market, side) { return (S.plays?.book?.rows || []).find(r => r.bout === bout && r.market === market && (r.side || '') === (side || '')); }
+function cellWithBook(p, bout, market, side) {
+  const r = bookPrice(bout, market, side);
+  if (!r) return probOut(p);
+  const ev = p * r.dec - 1;
+  return `${probOut(p)}<div class="psub" style="justify-content:flex-end"><span class="${ev >= 0.03 ? 'edge-pos' : 'edge-neg'}" data-tip="${esc(`Book ${r.raw} implies ${pct(1 / r.dec)} · EV ${ev >= 0 ? '+' : '−'}$${Math.abs(ev).toFixed(2)} per $1`)}">${esc(r.raw)}</span></div>`;
+}
+function renderOdds() {
+  const el = $('#panel-odds');
+  if (!S.data) { el.innerHTML = '<div class="skel" style="height:520px"></div>'; return; }
+  el.innerHTML = `
+    <div class="toolbar"><span class="count">Every bout, both fighters. Value against your prices shows under each number.</span><span class="spacer"></span>
+      <div class="seg" id="fmtSeg"><button data-v="pct" aria-pressed="${S.fmt === 'pct'}">Probability</button><button data-v="odds" aria-pressed="${S.fmt === 'odds'}">Fair odds</button></div></div>
+    <div class="table-wrap"><table class="data"><thead><tr><th class="l">Fighter</th><th>Win</th><th>KO/TKO</th><th>Submission</th><th>Decision</th><th>Inside distance</th><th data-tip="The fight goes the full scheduled rounds">Distance</th><th data-tip="Fight lasts past 2.5 rounds (7:30 into round 3)">Over 2.5</th></tr></thead><tbody>
+      ${S.data.bouts.map(b => ['A', 'B'].map((side, i) => { const f = side === 'A' ? b.a : b.b, m = b.methods[side]; return `<tr class="${i ? 'pair-2' : 'pair-1'}">
+        <td class="l"><div class="pname">${esc(f.name)}</div><div class="psub">${i ? '' : `${esc(b.weightClass)} · ${b.rounds} rds`}${i ? `vs ${esc(b.a.name)}` : ''}</div></td>
+        <td class="sorted">${cellWithBook(side === 'A' ? b.pA : b.pB, b.id, 'win', side)}</td>
+        <td>${cellWithBook(m.KO, b.id, 'ko', side)}</td><td>${cellWithBook(m.SUB, b.id, 'sub', side)}</td><td>${cellWithBook(m.DEC, b.id, 'dec', side)}</td><td>${cellWithBook(m.KO + m.SUB, b.id, 'itd', side)}</td>
+        ${i ? '' : `<td rowspan="2">${cellWithBook(b.distance, b.id, 'distance', '')}</td><td rowspan="2">${b.over['2.5'] !== undefined ? cellWithBook(b.over['2.5'], b.id, 'over', '') : '—'}</td>`}</tr>`; }).join('')).join('')}
+    </tbody></table></div>
+    <div style="margin-top:16px">${bookBox()}</div>`;
+}
+
+// ── Best plays ───────────────────────────────────────────────────────────────────────────
+async function loadPlays(force = false) {
+  if (!S.data) return;
+  const key = `${S.data.event.id}|${S.data.generatedAt}|${S.book}`;
+  if (!force && (S.playsKey === key || S.playsLoading)) return;
+  S.playsKey = key; S.playsLoading = true; S.playsErr = null; renderPlays();
+  try { S.plays = await apiPost('/api/plays', { book: S.book }); } catch (err) { S.playsErr = err.message; }
+  S.playsLoading = false; renderPlays(); renderParlays(); if (S.tab === 'odds') renderOdds();
+}
+const modeTag = m => (m === 'value' ? '<span class="tag pos">Value · vs your prices</span>' : '<span class="tag">Model ranking</span>');
+const evText = ev => `${ev >= 0 ? '+' : '−'}$${Math.abs(ev).toFixed(2)}`;
+function playCard(x, i) {
+  return `<div class="card play"><div><div class="play-h"><span class="play-rank">${i + 1}</span><div><div class="play-name">${esc(x.title)}</div><div class="play-sub">${esc(x.sub)}</div></div>
+    <div class="play-prob"><div class="big">${pct(x.prob)}</div><div class="small">fair ${esc(x.fairOdds)}</div></div></div>
+    ${x.book ? `<div class="bookline"><span class="tag pos">Book ${esc(x.book.raw)} · EV ${evText(x.book.ev)} per $1</span></div>` : ''}</div>
+    <ul>${x.reasons.map(r => `<li>${esc(r)}</li>`).join('')}</ul></div>`;
+}
+function ticketCard(t, size) {
+  return `<div class="card"><div class="card-h"><h3>${size}-leg ticket</h3><span class="sub">${pct(t.joint, 1)} · fair ${esc(t.fairOdds)}</span></div>
+    ${t.legs.map(l => `<div class="leg"><span>${esc(l.title)}${l.dec ? ` <span class="muted">${decToAmerican(l.dec)}</span>` : ''}</span><span>${pct(l.prob, 0)}</span></div>`).join('')}
+    <div class="alts">${t.ev !== null && t.ev !== undefined ? `Book pays ${t.bookDecimal.toFixed(2)}x · EV ${evText(t.ev)} per $1.` : 'Different bouts are independent, so the ticket is the legs multiplied.'}</div></div>`;
+}
+function renderPlays() {
+  const el = $('#panel-plays');
+  if (!S.data || !S.plays) { el.innerHTML = S.playsErr ? stateHtml('err', 'Couldn’t build the best plays', 'The plays endpoint returned an error.', S.playsErr) : '<div class="skel" style="height:420px"></div>'; return; }
+  const P = S.plays;
+  el.innerHTML = `
+    <div class="card mode-banner">${P.priced ? `<span class="tag pos">${P.priced} prices loaded</span><span class="note">Sections with your prices rank by expected profit against the model.</span>` : '<span class="tag">No book prices</span><span class="note">Plays rank by model strength: the most likely outcomes, not proven value. Paste odds on the <a href="#" data-goto="odds">Odds</a> tab to rank by value.</span>'}
+      <span style="flex:1"></span><span class="note">${S.playsLoading ? 'Updating…' : `Built ${new Date(P.generatedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`}</span></div>
+    <div class="section-head"><h2>Sides</h2>${modeTag(P.sides.mode)}</div><div class="callout">${esc(P.sides.summary)}</div>
+    <div class="plays">${P.sides.items.map(playCard).join('') || '<p class="note">Nothing clears the bar.</p>'}</div>
+    <div class="section-head"><h2>Props</h2>${modeTag(P.props.mode)}</div><div class="callout">${esc(P.props.summary)}</div>
+    <div class="plays">${P.props.items.map(playCard).join('') || '<p class="note">Nothing clears the bar.</p>'}</div>
+    <div class="section-head"><h2>Parlays</h2>${modeTag(P.parlays.mode)}</div><div class="callout">${esc(P.parlays.summary)}</div>
+    <div class="tickets">${[3, 4, 5].map(n => P.parlays.bySize[n].parlays[0] ? ticketCard(P.parlays.bySize[n].parlays[0], n) : `<div class="card state"><p>${esc(P.parlays.bySize[n].note || '')}</p></div>`).join('')}</div>
+    <p class="note foot">Value plays need ${pct(P.minEv, 0)}+ expected profit per $1 against your price. Props inside one bout are priced together (a KO win and "doesn’t go the distance" move together).</p>`;
+}
+
+// ── Parlays ──────────────────────────────────────────────────────────────────────────────
+function marketOptions(b) {
+  if (!b) return '';
+  const o = [];
+  for (const [side, f] of [['A', b.a], ['B', b.b]]) for (const [m, l] of [['win', 'to win'], ['ko', 'by KO/TKO'], ['sub', 'by submission'], ['dec', 'by decision'], ['itd', 'inside the distance']]) o.push([`${m}|${side}`, `${f.name} ${l}`]);
+  o.push(['distance|', 'Goes the distance'], ['nodistance|', 'Doesn’t go the distance'], ['over|1.5', 'Over 1.5 rounds'], ['under|1.5', 'Under 1.5 rounds'], ['over|2.5', 'Over 2.5 rounds'], ['under|2.5', 'Under 2.5 rounds']);
+  return o.map(([v, l]) => `<option value="${esc(v)}" ${v === S.legMarket ? 'selected' : ''}>${esc(l)}</option>`).join('');
+}
+function legText(l) {
+  const b = boutById(l.bout); if (!b) return l.market;
+  const f = l.side === 'B' ? b.b.name : b.a.name;
+  return { win: `${f} to win`, ko: `${f} by KO/TKO`, sub: `${f} by submission`, dec: `${f} by decision`, itd: `${f} inside the distance`, distance: `${b.a.name} vs ${b.b.name} goes the distance`, nodistance: `${b.a.name} vs ${b.b.name} doesn’t go the distance`, over: `Over ${l.line} rounds (${b.a.name} vs ${b.b.name})`, under: `Under ${l.line} rounds (${b.a.name} vs ${b.b.name})` }[l.market];
+}
+function renderParlays() {
+  const el = $('#panel-parlays');
+  if (!S.data) { el.innerHTML = '<div class="skel" style="height:420px"></div>'; return; }
+  if (!S.legBout) S.legBout = S.data.bouts[0]?.id;
+  const r = S.slipRes;
+  el.innerHTML = `
+    <div class="two">
+      <div class="card"><div class="card-h"><h2>Build a ticket</h2><span class="sub">Priced inside the fight simulation</span></div>
+        <div class="card-b">
+          <div class="toolbar"><select class="select" id="legBout">${S.data.bouts.map(b => `<option value="${esc(b.id)}" ${b.id === S.legBout ? 'selected' : ''}>${esc(b.a.name)} vs ${esc(b.b.name)}</option>`).join('')}</select>
+            <select class="select" id="legMarket">${marketOptions(boutById(S.legBout))}</select><button class="btn" id="addLeg">Add leg</button></div>
+          ${S.slip.length ? `<div class="slip-legs" style="border:1px solid var(--line);border-radius:var(--r-sm)">${S.slip.map((l, i) => `<div class="slip-leg"><span>${esc(legText(l))}</span><span class="num">${r?.legs?.[i] ? pct(r.legs[i].prob, 0) : ''}</span><span></span><button class="btn ghost" data-unleg="${i}" aria-label="Remove leg">${ICON.close}</button></div>`).join('')}</div>` : '<p class="note">Add 2–10 legs: sides, methods, distance and round totals, from one bout or many.</p>'}
+          ${S.slipErr ? `<p class="note" style="color:var(--neg);margin-top:8px">${esc(S.slipErr)}</p>` : ''}</div>
+        ${r && S.slip.length ? `<div class="stats"><div><div class="k">Hits in</div><div class="v">${pct(r.joint, 1)}</div></div><div><div class="k">Fair odds</div><div class="v">${american(r.joint)}</div></div><div><div class="k">Legs multiplied</div><div class="v">${pct(r.independent, 1)}</div></div><div><div class="k">Correlation</div><div class="v">${r.lift ? `×${r.lift.toFixed(2)}` : '—'}</div></div></div>` : ''}</div>
+      <div class="card"><div class="card-h"><h2>Same-fight legs</h2></div><div class="card-b note">Legs from the same bout are priced from the same simulated fights. “Fighter by KO” plus “doesn’t go the distance” is far more likely together than multiplying them suggests (correlation above 1); “by decision” plus “under 1.5 rounds” can’t both happen (0). Legs from different bouts are independent.</div></div>
+    </div>
+    <div class="section-head"><h2>Auto tickets</h2>${S.plays ? modeTag(S.plays.parlays.mode) : ''}</div>
+    ${S.plays ? `<div class="callout">${esc(S.plays.parlays.summary)}</div><div class="tickets">${[3, 4, 5].map(n => { const t = S.plays.parlays.bySize[n].parlays[0]; return t ? ticketCard(t, n) : `<div class="card state"><p>${esc(S.plays.parlays.bySize[n].note || '')}</p></div>`; }).join('')}</div>` : '<div class="skel" style="height:200px"></div>'}`;
+}
+async function priceSlip() {
+  if (!S.slip.length) { S.slipRes = null; renderParlays(); return; }
+  try { S.slipRes = await apiPost('/api/parlay', { legs: S.slip }); S.slipErr = null; } catch (err) { S.slipErr = err.message; S.slipRes = null; }
+  renderParlays();
+}
+
+// ── DFS ──────────────────────────────────────────────────────────────────────────────────
+async function loadDfs() {
+  if (!S.data || S.dfsLoading) return;
+  S.dfsLoading = true; S.dfsErr = null; renderDfs();
+  try { S.dfs = await apiPost('/api/dfs', { csv: S.salaryCsv }); } catch (err) { S.dfsErr = err.message; }
+  S.dfsLoading = false; renderDfs();
+}
+function renderDfs() {
+  const el = $('#panel-dfs');
+  if (!S.data) { el.innerHTML = '<div class="skel" style="height:420px"></div>'; return; }
+  if (S.dfsErr) { el.innerHTML = stateHtml('err', 'Couldn’t build projections', 'The DFS endpoint returned an error.', S.dfsErr); return; }
+  if (!S.dfs) { el.innerHTML = '<div class="skel" style="height:420px"></div>'; loadDfs(); return; }
+  const D = S.dfs, hasSal = D.salaries.matched > 0, k = S.dkSort.key, res = S.dkResult;
+  const rows = [...D.projections].sort((a, b) => ((a[k] ?? -1e9) < (b[k] ?? -1e9) ? -1 : 1) * S.dkSort.dir * (k === 'name' ? -1 : 1));
+  const maxPts = Math.max(...D.projections.map(p => p.points), 1);
+  const th = (key, label, cls = '') => `<th class="sortable ${cls}" data-dksort="${key}">${label}<span class="arrow">${S.dkSort.key === key ? (S.dkSort.dir > 0 ? '↑' : '↓') : ''}</span></th>`;
+  const segs = p => { const s = p.split, t = Math.max(1, s.strikes + s.takedowns + s.other + s.bonus); return `<div class="stackbar" style="width:${Math.max(30, (p.points / maxPts) * 220)}px" data-tip="${esc(`<div class='t'>${p.name}</div><div class='r'>Strikes <b>${s.strikes}</b></div><div class='r'>Takedowns <b>${s.takedowns}</b></div><div class='r'>Knockdowns + control <b>${s.other}</b></div><div class='r'>Win bonus <b>${s.bonus}</b></div>`)}"><i style="width:${(s.strikes / t) * 100}%;background:var(--s1)"></i><i style="width:${(s.takedowns / t) * 100}%;background:var(--s3)"></i><i style="width:${(s.other / t) * 100}%;background:var(--s4)"></i><i style="width:${(s.bonus / t) * 100}%;background:var(--s2)"></i></div>`; };
+  el.innerHTML = `
+    <div class="drop" id="dkDrop">${ICON.upload}<span>${hasSal ? `<b>${esc(S.salaryName || 'Salaries')}</b> · ${D.salaries.matched} fighters matched${D.salaries.unmatched.length ? ` · unmatched: ${esc(D.salaries.unmatched.slice(0, 4).join(', '))}` : ''}` : 'Drop the salary CSV from your DFS site here (Classic: 6 fighters, $50,000), or'}</span>
+      <label class="btn">${hasSal ? 'Replace' : 'Choose file'}<input type="file" id="dkFile" accept=".csv" hidden></label>${hasSal ? '<button class="btn ghost" id="dkClear">Clear</button>' : ''}</div>
+    ${hasSal ? `<div class="card" style="margin-top:16px"><div class="card-b"><div class="toolbar" style="margin:0">
+      <div class="seg" id="dkContest"><button data-v="cash" aria-pressed="${S.dkContest === 'cash'}" data-tip="Rank lineups by average points across the simulated fights">Cash · average</button><button data-v="gpp" aria-pressed="${S.dkContest === 'gpp'}" data-tip="Rank lineups by their 90th-percentile night: tournament upside">Tournament · ceiling</button></div>
+      <label class="ctl note"><input type="checkbox" id="dkOpp" ${S.dkOpp ? 'checked' : ''}> Allow both fighters from one bout</label>
+      <span class="seg-label">Lineups</span><select class="select" id="dkCount">${[1, 5, 10, 20, 50, 150].map(n => `<option ${n === S.dkCount ? 'selected' : ''}>${n}</option>`).join('')}</select>
+      <span class="seg-label">Max exposure</span><select class="select" id="dkExposure">${[0.3, 0.5, 0.7, 1].map(v => `<option value="${v}" ${v === S.dkExposure ? 'selected' : ''}>${v === 1 ? 'No cap' : pct(v, 0)}</option>`).join('')}</select>
+      <span class="seg-label">Unique</span><select class="select" id="dkUnique">${[1, 2, 3].map(v => `<option ${v === S.dkUnique ? 'selected' : ''}>${v}</option>`).join('')}</select>
+      <span class="spacer"></span><button class="btn primary" id="dkBuild" ${S.dkBusy ? 'disabled' : ''}>${ICON.play} ${S.dkBusy ? 'Building…' : 'Build lineups'}</button>${res?.lineups?.length ? '<button class="btn" id="dkExport">Export CSV</button>' : ''}</div>
+      ${S.dkProgress ? `<div class="progress"><i style="width:${(S.dkProgress.built / Math.max(1, S.dkProgress.count)) * 100}%"></i></div>` : ''}</div></div>` : ''}
+    ${res ? `<div class="section-head"><h2>Lineups</h2><span class="count">${res.lineups.length} lineups · ${res.candidates ? `${res.candidates} candidates scored against ${res.sims.toLocaleString()} simulated cards, ranked by ${res.metric === 'ceiling' ? 'ceiling' : 'average'} · ` : ''}${(res.ms / 1000).toFixed(1)}s${res.reason ? ` · ${esc(res.reason)}` : ''}</span></div>
+      <div class="lineups">${res.lineups.slice(0, 24).map((l, i) => `<div class="card"><div class="lu-row head"><span>Lineup ${i + 1}</span><span>Salary</span><span>Pts</span></div>
+        ${l.players.map(x => `<div class="lu-row"><span>${esc(x.name)}</span><span>$${x.salary.toLocaleString()}</span><span>${x.points.toFixed(1)}</span></div>`).join('')}
+        <div class="lu-f"><span>$${l.salary.toLocaleString()}</span><span>avg ${(l.mean ?? l.points).toFixed(1)}${l.ceiling !== undefined ? ` · ceiling ${l.ceiling.toFixed(0)}` : ''}</span></div></div>`).join('')}</div>` : ''}
+    <div class="section-head"><h2>Projections</h2><span class="count">Mean points over ${S.data.sims.toLocaleString()} simulated fights</span></div>
+    <div class="table-wrap"><table class="data"><thead><tr>${hasSal ? '<th class="l">Lock</th>' : ''}${th('name', 'Fighter', 'l')}${th('win', 'Win')}${hasSal ? th('salary', 'Salary') : ''}${th('points', 'Projection')}<th class="l">Where the points come from</th>${th('p90', 'Ceiling')}${hasSal ? th('value', 'Pts / $1k') : ''}</tr></thead><tbody>
+      ${rows.map(p => `<tr>${hasSal ? `<td class="l"><span class="lk"><button data-lock="${esc(p.id)}" class="${S.dkLocks.has(p.id) ? 'on-lock' : ''}">L</button><button data-ex="${esc(p.id)}" class="${S.dkExcludes.has(p.id) ? 'on-ex' : ''}">✕</button></span></td>` : ''}
+        <td class="l"><div class="pname">${esc(p.name)}</div><div class="psub">vs ${esc(p.oppName)}</div></td><td>${pct(p.win, 0)}</td>${hasSal ? `<td>${p.salary ? `$${p.salary.toLocaleString()}` : '—'}</td>` : ''}
+        <td class="sorted">${p.points.toFixed(1)}</td><td class="l">${segs(p)}</td><td>${p.p90.toFixed(0)}</td>${hasSal ? `<td>${p.value ?? '—'}</td>` : ''}</tr>`).join('')}</tbody></table></div>
+    <div class="legend foot"><span><i class="box" style="background:var(--s1)"></i>Strikes</span><span><i class="box" style="background:var(--s3)"></i>Takedowns</span><span><i class="box" style="background:var(--s4)"></i>Knockdowns + control</span><span><i class="box" style="background:var(--s2)"></i>Win bonus</span></div>
+    <p class="note foot">Scoring: 0.2 per significant strike, 5 per takedown, 10 per knockdown, 0.03 per second of control; win bonus 90 / 70 / 45 / 40 / 40 by round, 30 by decision, +25 for a first-minute win. Check it against your site’s rules page. Control time is estimated from takedowns. Lineups are scored fight by fight, so a fighter and their opponent (whose win bonuses cancel) are counted for what they combine to.</p>`;
+  const f = $('#dkFile'); if (f) f.addEventListener('change', e => e.target.files[0] && loadSalaryFile(e.target.files[0]));
+  const drop = $('#dkDrop');
+  ['dragenter', 'dragover'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add('over'); }));
+  ['dragleave', 'drop'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove('over'); }));
+  drop.addEventListener('drop', e => e.dataTransfer.files[0] && loadSalaryFile(e.dataTransfer.files[0]));
+}
+function loadSalaryFile(file) { const fr = new FileReader(); fr.onload = () => { S.salaryCsv = String(fr.result); S.salaryName = file.name; store.set(evKey('salaries'), JSON.stringify({ csv: S.salaryCsv, name: file.name })); S.dfs = null; S.dkResult = null; loadDfs(); }; fr.readAsText(file); }
+function decodeSample(smp) { const bin = atob(smp.data), bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i); return { n: smp.n, ids: smp.ids, data: new Int16Array(bytes.buffer) }; }
+function buildDfs() {
+  const pool = S.dfs.projections.filter(p => p.salary).map(p => ({ id: p.id, name: p.name, salary: p.salary, points: p.points, ceiling: p.p90 }));
+  const sample = S.dfs.sample ? decodeSample(S.dfs.sample) : null;
+  const opts = { count: S.dkCount, locks: [...S.dkLocks].filter(id => pool.some(p => p.id === id)), excludes: [...S.dkExcludes], maxExposure: S.dkCount > 1 && S.dkExposure < 1 ? S.dkExposure : 0, minUnique: S.dkCount > 1 ? S.dkUnique : 1, timeLimitMs: 45000, metric: S.dkContest === 'gpp' ? 'ceiling' : 'mean', opponents: S.dkOpp ? [] : S.dfs.opponents };
+  const t0 = performance.now();
+  S.dkBusy = true; S.dkProgress = { built: 0, count: 1 }; S.dkResult = null; renderDfs();
+  const finish = out => { S.dkBusy = false; S.dkProgress = null; S.dkResult = { ...out, ms: performance.now() - t0 }; renderDfs(); };
+  try {
+    const worker = new Worker('/lib/dfs-optimizer.js');
+    worker.onmessage = e => { if (e.data.type === 'progress') { S.dkProgress = e.data; renderDfs(); } if (e.data.type === 'done') { worker.terminate(); finish(e.data); } };
+    worker.onerror = () => { worker.terminate(); runInline(); };
+    worker.postMessage({ pool, opts, sample });
+  } catch { runInline(); }
+  function runInline() {
+    const go = () => finish(sample ? window.DFSOpt.buildSimLineups(pool, sample, opts) : window.DFSOpt.buildLineups(pool, opts));
+    if (window.DFSOpt) return setTimeout(go, 30);
+    document.head.appendChild(Object.assign(document.createElement('script'), { src: '/lib/dfs-optimizer.js', onload: go, onerror: () => finish({ lineups: [], reason: 'Couldn’t load the optimizer.' }) }));
+  }
+}
+function exportDfs() {
+  const by = new Map(S.dfs.projections.map(p => [p.id, p]));
+  const lines = ['F,F,F,F,F,F', ...S.dkResult.lineups.map(l => l.players.map(x => by.get(x.id)?.siteId || by.get(x.id)?.name).join(','))];
+  const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob([lines.join('\n') + '\n'], { type: 'text/csv' })), download: `ufcprob-lineups-${S.data.event.id}.csv` });
+  a.click(); URL.revokeObjectURL(a.href);
+}
+
+// ── Fight breakdown ──────────────────────────────────────────────────────────────────────
+const STYLE_ROWS = [
+  ['sigF15', 'Sig. strikes landed', 'sig15', 'per 15 min'], ['sigA15', 'Sig. strikes absorbed', 'sig15', 'per 15 min (lower is better)'],
+  ['tdF15', 'Takedowns', 'td15', 'per 15 min'], ['tdA15', 'Takedowns allowed', 'td15', 'per 15 min (lower is better)'],
+  ['kdF15', 'Knockdowns scored', 'kd15', 'per 15 min'], ['subF15', 'Submission attempts', 'sub15', 'per 15 min'],
+];
+function drawWhy(el, why, a, b) {
+  if (!why.length) { el.innerHTML = '<p class="note">The two fighters grade out almost the same on every input.</p>'; return; }
+  const w = W(el), rowH = 30, ml = 130, mr = 60, h = rowH * why.length + 24;
+  const ext = Math.max(0.2, ...why.map(x => Math.abs(x.logOdds))) * 1.15, x = v => ml + ((v + ext) / (2 * ext)) * (w - ml - mr);
+  el.innerHTML = `<svg viewBox="0 0 ${w} ${h}" height="${h}" role="img" aria-label="What drives the win probability">
+    <line x1="${x(0)}" x2="${x(0)}" y1="0" y2="${h - 20}" stroke="var(--axis)"/>
+    <text x="0" y="${h - 4}" text-anchor="start" style="fill:${SB}">← favours ${esc(b.name.split(' ').slice(-1)[0])}</text><text x="${w}" y="${h - 4}" text-anchor="end" style="fill:${SA}">favours ${esc(a.name.split(' ').slice(-1)[0])} →</text>
+    ${why.map((r, i) => { const y = i * rowH; return `<g data-i="${i}"><rect x="0" y="${y}" width="${w}" height="${rowH}" fill="transparent"/><text x="0" y="${y + 19}" style="fill:var(--ink-2)">${esc(r.name)}</text>
+      <rect x="${Math.min(x(0), x(r.logOdds))}" y="${y + 8}" width="${Math.max(1, Math.abs(x(r.logOdds) - x(0)))}" height="14" rx="3" fill="${r.logOdds >= 0 ? SA : SB}"/>
+      <text x="${r.logOdds >= 0 ? x(r.logOdds) + 6 : x(r.logOdds) - 6}" y="${y + 19}" text-anchor="${r.logOdds >= 0 ? 'start' : 'end'}" style="fill:var(--ink-2)">${signed(r.logOdds)}</text></g>`; }).join('')}</svg>`;
+  wireTips(el, 'g[data-i]', g => { const r = why[+g.dataset.i]; return `<div class="t">${esc(r.name)}</div><div class="r">Log-odds <b>${signed(r.logOdds, 3)}</b></div><div class="r">Toward <b>${esc(r.logOdds >= 0 ? a.name : b.name)}</b></div>`; });
+}
+function drawOutcomes(el, b) {
+  const rows = [['KO', 'A'], ['SUB', 'A'], ['DEC', 'A'], ['KO', 'B'], ['SUB', 'B'], ['DEC', 'B']].map(([m, s]) => ({ m, s, p: b.methods[s][m] }));
+  const w = W(el), h = 180, ml = 8, mr = 8, mt = 20, mb = 40, band = (w - ml - mr) / 6, bw = Math.min(46, band * 0.6);
+  const max = Math.max(...rows.map(r => r.p), 0.05) * 1.15, y = v => mt + (h - mt - mb) * (1 - v / max);
+  el.innerHTML = `<svg viewBox="0 0 ${w} ${h}" height="${h}" role="img" aria-label="How the fight ends">
+    <line x1="${ml}" x2="${w - mr}" y1="${h - mb}" y2="${h - mb}" stroke="var(--axis)"/>
+    ${rows.map((r, i) => { const x0 = ml + band * i + (band - bw) / 2; return `<path d="${colPath(x0, y(r.p), bw, h - mb - y(r.p))}" fill="${r.s === 'A' ? SA : SB}" opacity="${r.m === 'DEC' ? 0.55 : 1}"/>
+      <text x="${x0 + bw / 2}" y="${y(r.p) - 6}" text-anchor="middle" style="fill:var(--ink);font-weight:600">${pct(r.p, 0)}</text>
+      <text x="${x0 + bw / 2}" y="${h - 24}" text-anchor="middle">${band < 80 ? { KO: 'KO', SUB: 'Sub', DEC: 'Dec' }[r.m] : METHOD_LABEL[r.m]}</text><text x="${x0 + bw / 2}" y="${h - 9}" text-anchor="middle" style="fill:${r.s === 'A' ? SA : SB}">${esc((r.s === 'A' ? b.a : b.b).name.split(' ').slice(-1)[0])}</text>`; }).join('')}</svg>`;
+}
+function drawRounds(el, b) {
+  const R = b.rounds, rows = [...b.endsInRound.map((p, i) => ({ label: `R${i + 1}`, p, a: b.winsInRound.A[i], b: b.winsInRound.B[i] })), { label: 'Decision', p: b.distance, a: b.methods.A.DEC, b: b.methods.B.DEC }];
+  const w = W(el), h = 160, ml = 8, mr = 8, mt = 20, mb = 24, band = (w - ml - mr) / rows.length, bw = Math.min(46, band * 0.6);
+  const max = Math.max(...rows.map(r => r.p), 0.05) * 1.15, y = v => mt + (h - mt - mb) * (1 - v / max);
+  el.innerHTML = `<svg viewBox="0 0 ${w} ${h}" height="${h}" role="img" aria-label="When the fight ends">
+    <line x1="${ml}" x2="${w - mr}" y1="${h - mb}" y2="${h - mb}" stroke="var(--axis)"/>
+    ${rows.map((r, i) => { const x0 = ml + band * i + (band - bw) / 2, ya = y(r.a), yb = y(r.a + r.b); return `<g data-i="${i}"><rect x="${ml + band * i}" y="${mt}" width="${band}" height="${h - mt - mb}" fill="transparent"/>
+      <rect x="${x0}" y="${ya}" width="${bw}" height="${h - mb - ya}" fill="${SA}"/><rect x="${x0}" y="${yb}" width="${bw}" height="${ya - yb}" rx="3" fill="${SB}"/>
+      <text x="${x0 + bw / 2}" y="${yb - 6}" text-anchor="middle" style="fill:var(--ink);font-weight:600">${pct(r.p, 0)}</text><text x="${x0 + bw / 2}" y="${h - 7}" text-anchor="middle">${r.label}</text></g>`; }).join('')}</svg>`;
+  wireTips(el, 'g[data-i]', g => { const r = rows[+g.dataset.i]; return `<div class="t">${r.label === 'Decision' ? 'Goes to the judges' : `Ends in ${r.label}`}</div><div class="r">${esc(b.a.name)} <b>${pct(r.a)}</b></div><div class="r">${esc(b.b.name)} <b>${pct(r.b)}</b></div>`; });
+}
+function renderBreakdown() {
+  const el = $('#panel-breakdown');
+  if (!S.data) { el.innerHTML = '<div class="skel" style="height:420px"></div>'; return; }
+  if (!S.bout || !boutById(S.bout)) S.bout = S.data.bouts[0]?.id;
+  const b = boutById(S.bout); if (!b) { el.innerHTML = stateHtml('', 'No bouts', 'This card has no bouts listed yet.'); return; }
+  const A = b.a, B = b.b;
+  const styleRow = ([k, label, ck, unit]) => { const va = A.style[k], vb = B.style[k], cl = A.classStyle[ck] ?? 0, max = Math.max(va, vb, cl, 0.01) * 1.1;
+    return `<div class="cmp-row" data-tip="${esc(`<div class='t'>${label}</div><div class='r'>${A.name} <b>${va.toFixed(2)}</b></div><div class='r'>${B.name} <b>${vb.toFixed(2)}</b></div><div class='r'>Weight-class average <b>${cl.toFixed(2)}</b></div><div class='r'>${unit}</div>`)}">
+      <span class="v">${va.toFixed(k === 'kdF15' ? 2 : 1)}</span><span class="bar l"><i style="width:${(va / max) * 100}%"></i></span><span class="lab">${label}</span><span class="bar r"><i style="width:${(vb / max) * 100}%"></i></span><span class="v">${vb.toFixed(k === 'kdF15' ? 2 : 1)}</span></div>`; };
+  const tale = [['UFC record', rec(A.record), rec(B.record)], ['Elo', A.elo, B.elo], ['Age', A.age ? A.age.toFixed(1) : '—', B.age ? B.age.toFixed(1) : '—'], ['Reach', A.reachIn ? `${A.reachIn}″` : '—', B.reachIn ? `${B.reachIn}″` : '—'], ['Height', height(A.heightIn), height(B.heightIn)], ['Stance', A.stance || '—', B.stance || '—'], ['Last fought', A.lastDate ? shortDate(A.lastDate) : 'Debut', B.lastDate ? shortDate(B.lastDate) : 'Debut']];
+  const how = (f, k) => { const w = f.finishProfile[k], t = Math.max(1, w.KO + w.SUB + w.DEC); return `<div class="stackbar" style="height:12px" data-tip="${esc(`KO ${w.KO} · Sub ${w.SUB} · Dec ${w.DEC}`)}"><i style="width:${(w.KO / t) * 100}%;background:var(--s2)"></i><i style="width:${(w.SUB / t) * 100}%;background:var(--s4)"></i><i style="width:${(w.DEC / t) * 100}%;background:var(--ink-3)"></i></div><div class="psub">${w.KO} KO · ${w.SUB} sub · ${w.DEC} dec</div>`; };
+  const recent = f => f.recent.length ? f.recent.map(r => `<div class="rec-row"><span class="tag ${r.won === 1 ? 'pos' : r.won === 0 ? 'neg' : ''}">${r.won === 1 ? 'W' : r.won === 0 ? 'L' : 'D'}</span><span class="nm">${esc(r.opp)}</span><span class="muted">${esc(r.method || '')}${r.round ? ` R${r.round}` : ''}</span><span class="muted">${shortDate(r.date)}</span></div>`).join('') : '<p class="note">UFC debut: no tracked bouts.</p>';
+  el.innerHTML = `
+    <div class="toolbar"><select class="select" id="boutSelect">${S.data.bouts.map(x => `<option value="${esc(x.id)}" ${x.id === S.bout ? 'selected' : ''}>${esc(x.a.name)} vs ${esc(x.b.name)} · ${esc(x.weightClass || '')}</option>`).join('')}</select></div>
+    <div class="card"><div class="card-b">
+      <div class="face"><div><div class="fname big" style="color:${SA}">${esc(A.name)}</div><div class="big-prob">${pct(b.pA)}</div><div class="note">fair ${esc(b.fair.a)}</div></div>
+        <div class="mid"><div class="note">${esc(b.weightClass || '')} · ${b.rounds} rounds${b.title ? ' · title' : ''}</div><div class="split-bar"><span style="width:${b.pA * 100}%;background:${SA}">${pct(b.pA, 0)}</span><span style="width:${b.pB * 100}%;background:${SB}">${pct(b.pB, 0)}</span></div><div class="note" style="margin-top:6px">Goes the distance ${pct(b.distance, 0)} · finish ${pct(b.insideDistance, 0)}</div></div>
+        <div style="text-align:right"><div class="fname big" style="color:${SB}">${esc(B.name)}</div><div class="big-prob">${pct(b.pB)}</div><div class="note">fair ${esc(b.fair.b)}</div></div></div>
+    </div></div>
+    <div class="two" style="margin-top:16px">
+      <div class="card"><div class="card-h"><h2>What drives the number</h2><span class="sub">Each input’s pull on the win probability (log-odds)</span></div><div class="card-b"><div class="chart" id="whyChart"></div></div></div>
+      <div class="card"><div class="card-h"><h2>Tale of the tape</h2></div><div class="table-wrap" style="border:0;border-radius:0"><table class="data"><thead><tr><th class="l">${esc(A.name)}</th><th class="l" style="text-align:center"></th><th>${esc(B.name)}</th></tr></thead><tbody>
+        ${tale.map(([k, a, bb]) => `<tr><td class="l">${esc(String(a))}</td><td class="l muted" style="text-align:center">${k}</td><td>${esc(String(bb))}</td></tr>`).join('')}</tbody></table></div></div>
+    </div>
+    <div class="two" style="margin-top:16px">
+      <div class="card"><div class="card-h"><h2>How it ends</h2><span class="sub">Winner and method, share of simulated fights</span></div><div class="card-b"><div class="chart" id="outChart"></div></div></div>
+      <div class="card"><div class="card-h"><h2>When it ends</h2><span class="sub">By round; blue = ${esc(A.name.split(' ').slice(-1)[0])}, orange = ${esc(B.name.split(' ').slice(-1)[0])}</span></div><div class="card-b"><div class="chart" id="roundChart"></div></div></div>
+    </div>
+    <div class="card" style="margin-top:16px"><div class="card-h"><h2>Style</h2><span class="sub">Recency-weighted, regressed to the weight class; hover for the class average</span></div><div class="card-b cmp">${STYLE_ROWS.map(styleRow).join('')}</div></div>
+    <div class="two" style="margin-top:16px">
+      <div class="card"><div class="card-h"><h2>${esc(A.name)}</h2><span class="sub">How they win · how they lose</span></div><div class="card-b"><div class="grid-2"><div><div class="section-t">Wins</div>${how(A, 'rawWins')}</div><div><div class="section-t">Losses</div>${how(A, 'rawLosses')}</div></div><div class="section-t" style="margin-top:14px">Recent UFC bouts</div>${recent(A)}</div></div>
+      <div class="card"><div class="card-h"><h2>${esc(B.name)}</h2><span class="sub">How they win · how they lose</span></div><div class="card-b"><div class="grid-2"><div><div class="section-t">Wins</div>${how(B, 'rawWins')}</div><div><div class="section-t">Losses</div>${how(B, 'rawLosses')}</div></div><div class="section-t" style="margin-top:14px">Recent UFC bouts</div>${recent(B)}</div></div>
+    </div>`;
+  drawWhy($('#whyChart'), b.why, A, B); drawOutcomes($('#outChart'), b); drawRounds($('#roundChart'), b);
+}
+
+// ── Accuracy ─────────────────────────────────────────────────────────────────────────────
+function drawCalibration(el, bins) {
+  bins = bins.filter(b => b.n > 0);
+  const w = Math.min(W(el), 520), h = Math.min(320, w), ml = 56, mr = 14, mt = 12, mb = 36;
+  const x = v => ml + ((v - 0.5) / 0.5) * (w - ml - mr), y = v => mt + (1 - v) * (h - mt - mb);
+  el.innerHTML = `<svg viewBox="0 0 ${w} ${h}" height="${h}" style="max-width:${w}px" role="img" aria-label="Calibration">
+    ${[0.5, 0.6, 0.7, 0.8, 0.9, 1].map(t => `<line x1="${x(t)}" x2="${x(t)}" y1="${mt}" y2="${h - mb}" stroke="var(--grid)"/><text x="${x(t)}" y="${h - 18}" text-anchor="middle">${Math.round(t * 100)}%</text>`).join('')}
+    ${[0, 0.25, 0.5, 0.75, 1].map(t => `<line x1="${ml}" x2="${w - mr}" y1="${y(t)}" y2="${y(t)}" stroke="var(--grid)"/><text x="${ml - 8}" y="${y(t) + 4}" text-anchor="end">${t * 100}%</text>`).join('')}
+    <line x1="${x(0.5)}" y1="${y(0.5)}" x2="${x(1)}" y2="${y(1)}" stroke="var(--line-2)" stroke-width="1.5"/>
+    <text x="${(x(0.5) + x(1)) / 2}" y="${h - 2}" text-anchor="middle">Favourite’s predicted chance</text><text transform="translate(14 ${y(0.5)}) rotate(-90)" text-anchor="middle">Favourite won</text>
+    ${bins.length > 1 ? `<path d="${bins.map((b, i) => `${i ? 'L' : 'M'}${x(b.predicted)},${y(b.actual)}`).join('')}" fill="none" stroke="var(--s1)" stroke-width="2"/>` : ''}
+    ${bins.map((b, i) => `<g data-i="${i}"><circle cx="${x(b.predicted)}" cy="${y(b.actual)}" r="12" fill="transparent"/><circle cx="${x(b.predicted)}" cy="${y(b.actual)}" r="${Math.min(9, 3 + Math.sqrt(b.n) / 3)}" fill="var(--s1)" stroke="var(--surface)" stroke-width="2"/></g>`).join('')}</svg>`;
+  wireTips(el, 'g[data-i]', g => { const b = bins[+g.dataset.i]; return `<div class="t">Favourite at ${pct(b.lo, 0)}–${pct(b.hi, 0)}</div><div class="r">Avg predicted <b>${pct(b.predicted)}</b></div><div class="r">Actually won <b>${pct(b.actual)}</b></div><div class="r">Bouts <b>${b.n}</b></div>`; });
+}
+async function runBacktestNow() { S.btLoading = true; S.btErr = null; renderAccuracy(); try { S.backtest = await api('/api/backtest?events=25'); } catch (err) { S.btErr = err.message; } S.btLoading = false; renderAccuracy(); }
+async function loadGrades() { try { S.grades = await api('/api/grades'); } catch { S.grades = { events: [], note: 'Grades unavailable.' }; } renderAccuracy(); }
+function renderAccuracy() {
+  const el = $('#panel-accuracy'); const B = S.backtest, G = S.grades;
+  el.innerHTML = `
+    <div class="section-head"><h2>Backtest</h2><span class="note">Every bout predicted only from earlier bouts, then scored against what happened.</span><span style="flex:1"></span><button class="btn ${B ? '' : 'primary'}" id="runBt" ${S.btLoading ? 'disabled' : ''}>${ICON.play} ${S.btLoading ? 'Running…' : B ? 'Re-run' : 'Run backtest'}</button></div>
+    ${S.btErr ? stateHtml('err', 'Backtest failed', 'The backtest endpoint returned an error.', S.btErr) : ''}
+    ${!B && !S.btErr ? '<div class="card state"><h3>Not run yet</h3><p>Replays the last 25 events (a few seconds).</p></div>' : ''}
+    ${B ? `<div class="tiles">
+      <div class="card tile"><div class="lbl">Favourite won</div><div class="val">${pct(B.winner.accuracy)}</div><div class="note">${B.bouts.toLocaleString()} bouts over ${B.events} events</div></div>
+      <div class="card tile"><div class="lbl">Winner log loss</div><div class="val">${B.winner.logLoss.model.toFixed(3)}</div><div class="note">Elo alone ${B.winner.logLoss.elo.toFixed(3)} · coin flip ${B.winner.logLoss.coin.toFixed(3)} (lower is better)</div></div>
+      <div class="card tile"><div class="lbl">How it ends</div><div class="val">${B.outcome.logLoss.model.toFixed(3)}</div><div class="note">Winner × method log loss · base rates ${B.outcome.logLoss.base.toFixed(3)}</div></div>
+      <div class="card tile"><div class="lbl">Goes the distance</div><div class="val">${B.distance.brier.model.toFixed(3)}</div><div class="note">Brier · base rate ${B.distance.brier.base.toFixed(3)} (${pct(B.distance.rate, 0)} went the distance)</div></div></div>
+      <div class="two" style="margin-top:16px"><div class="card"><div class="card-h"><h2>Calibration</h2><span class="sub">When the favourite is x%, how often they won</span></div><div class="card-b"><div class="chart" id="calChart"></div></div></div>
+        <div class="card"><div class="card-h"><h2>Event by event</h2></div><div class="table-wrap" style="border:0;border-radius:0;max-height:400px"><table class="data"><thead><tr><th class="l">Date</th><th>Bouts</th><th>Favourites won</th></tr></thead><tbody>${B.perEvent.map(e => `<tr><td class="l">${shortDate(e.date)}</td><td>${e.bouts}</td><td>${e.picksRight} (${pct(e.picksRight / e.bouts, 0)})</td></tr>`).join('')}</tbody></table></div></div></div>` : ''}
+    <div class="section-head"><h2>Live record</h2><span class="note">The last projection before each card, graded after it.</span></div>
+    ${!G ? '<div class="skel" style="height:120px"></div>' : G.events.length ? `<div class="table-wrap"><table class="data"><thead><tr><th class="l">Event</th><th>Bouts</th><th>Favourites won</th><th>Log loss</th></tr></thead><tbody>${G.events.map(e => `<tr><td class="l">${esc(e.name)} <span class="muted">${shortDate(e.date)}</span></td><td>${e.bouts}</td><td>${e.picksRight}</td><td>${e.logLoss.toFixed(3)}</td></tr>`).join('')}</tbody></table></div>` : `<div class="card state"><p>${esc(G.note || 'No graded cards yet.')}</p></div>`}`;
+  if (B && $('#calChart')) drawCalibration($('#calChart'), B.calibration);
+}
+
+// ── Live ─────────────────────────────────────────────────────────────────────────────────
+let liveTimer = null;
+async function pollLive() {
+  try {
+    const { events } = await fetch(`/api/live?date=${S.data.event.date}`).then(r => r.json());
+    const e = events[0]; if (!e) return;
+    const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z ]/g, '').trim();
+    const m = new Map();
+    for (const b of S.data.bouts) { const lb = e.bouts.find(x => x.names.map(norm).includes(norm(b.a.name)) || x.names.map(norm).includes(norm(b.b.name))); if (lb) m.set(b.id, lb); }
+    S.live = m; if (S.tab === 'card') renderCard();
+  } catch { /* keep last */ }
+}
+function setLive() { clearInterval(liveTimer); liveTimer = null; if (S.data?.state === 'in') { pollLive(); liveTimer = setInterval(pollLive, 30000); } }
+
+// ── Wiring ───────────────────────────────────────────────────────────────────────────────
+function renderAll() { renderHero(); renderCard(); renderOdds(); renderPlays(); renderParlays(); if (S.tab === 'dfs') renderDfs(); if (S.tab === 'breakdown') renderBreakdown(); if (S.tab === 'accuracy') renderAccuracy(); }
+function setTab(tab) {
+  S.tab = tab;
+  document.querySelectorAll('.tab').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === tab)));
+  document.querySelectorAll('.panel').forEach(p => { p.hidden = p.id !== `panel-${tab}`; });
+  const u = new URL(location.href); u.searchParams.set('tab', tab); history.replaceState(null, '', u);
+  if (tab === 'dfs') renderDfs();
+  if (tab === 'breakdown') renderBreakdown();
+  if (['plays', 'parlays', 'odds'].includes(tab)) loadPlays();
+  if (tab === 'accuracy') { renderAccuracy(); if (!S.grades) loadGrades(); }
+}
+document.querySelector('.tabs').addEventListener('click', e => { const b = e.target.closest('.tab'); if (b) setTab(b.dataset.tab); });
+document.addEventListener('click', e => {
+  const t = e.target;
+  const go = t.closest('[data-goto]'); if (go) { e.preventDefault(); setTab(go.dataset.goto); scrollTo({ top: 0 }); return; }
+  const bt = t.closest('[data-bout]'); if (bt) { S.bout = bt.dataset.bout; setTab('breakdown'); scrollTo({ top: 0 }); return; }
+  const seg = t.closest('.seg button'); if (seg) {
+    const id = seg.parentElement.id, v = seg.dataset.v;
+    if (id === 'fmtSeg') { S.fmt = v; renderOdds(); renderCard(); }
+    if (id === 'dkContest') { S.dkContest = v; S.dkResult = null; renderDfs(); }
+    return;
+  }
+  if (t.closest('#bookApply')) { S.book = $('#bookText').value; store.set(evKey('book'), S.book); loadPlays(true); return; }
+  if (t.closest('#bookClear')) { S.book = ''; store.set(evKey('book'), ''); loadPlays(true); return; }
+  if (t.closest('#addLeg')) { const [market, x] = $('#legMarket').value.split('|'); const leg = { bout: $('#legBout').value, market }; if (['over', 'under'].includes(market)) leg.line = Number(x); else if (x) leg.side = x; if (S.slip.length < 10) S.slip.push(leg); priceSlip(); return; }
+  const un = t.closest('[data-unleg]'); if (un) { S.slip.splice(Number(un.dataset.unleg), 1); priceSlip(); return; }
+  const lk = t.closest('[data-lock]'); if (lk) { const id = lk.dataset.lock; S.dkExcludes.delete(id); S.dkLocks.has(id) ? S.dkLocks.delete(id) : S.dkLocks.add(id); renderDfs(); return; }
+  const ex = t.closest('[data-ex]'); if (ex) { const id = ex.dataset.ex; S.dkLocks.delete(id); S.dkExcludes.has(id) ? S.dkExcludes.delete(id) : S.dkExcludes.add(id); renderDfs(); return; }
+  const dth = t.closest('th[data-dksort]'); if (dth) { const k = dth.dataset.dksort; S.dkSort = S.dkSort.key === k ? { key: k, dir: -S.dkSort.dir } : { key: k, dir: -1 }; renderDfs(); return; }
+  if (t.closest('#dkBuild')) { buildDfs(); return; }
+  if (t.closest('#dkExport')) { exportDfs(); return; }
+  if (t.closest('#dkClear')) { store.set(evKey('salaries'), ''); S.salaryCsv = ''; S.salaryName = ''; S.dfs = null; S.dkResult = null; loadDfs(); return; }
+  if (t.closest('#runBt')) runBacktestNow();
+});
+document.addEventListener('keydown', e => { const bt = e.target.closest?.('[data-bout]'); if (bt && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); S.bout = bt.dataset.bout; setTab('breakdown'); } });
+document.addEventListener('change', e => {
+  const id = e.target.id;
+  if (id === 'boutSelect') { S.bout = e.target.value; renderBreakdown(); }
+  if (id === 'legBout') { S.legBout = e.target.value; S.legMarket = 'win|A'; renderParlays(); }
+  if (id === 'legMarket') S.legMarket = e.target.value;
+  if (id === 'dkCount') { S.dkCount = Number(e.target.value); renderDfs(); }
+  if (id === 'dkExposure') { S.dkExposure = Number(e.target.value); renderDfs(); }
+  if (id === 'dkUnique') { S.dkUnique = Number(e.target.value); renderDfs(); }
+  if (id === 'dkOpp') { S.dkOpp = e.target.checked; S.dkResult = null; renderDfs(); }
+});
+let resizeT; addEventListener('resize', () => { clearTimeout(resizeT); resizeT = setTimeout(() => { if (S.tab === 'breakdown') renderBreakdown(); if (S.tab === 'accuracy') renderAccuracy(); }, 150); });
+$('#eventSelect').addEventListener('change', e => { S.event = e.target.value; const u = new URL(location.href); if (S.event) u.searchParams.set('event', S.event); else u.searchParams.delete('event'); history.replaceState(null, '', u); reset(); load(); });
+$('#refresh').addEventListener('click', () => load(true));
+function reset() { S.data = null; S.plays = null; S.playsKey = null; S.dfs = null; S.dkResult = null; S.slip = []; S.slipRes = null; S.bout = null; S.live = null; S.legBout = ''; renderAll(); }
+async function loadEvents() {
+  try {
+    const { upcoming, completed } = await fetch('/api/events').then(r => r.json());
+    $('#eventSelect').innerHTML = '<option value="">Next card</option>' + upcoming.map(e => `<option value="${esc(e.id)}" ${e.id === S.event ? 'selected' : ''}>${esc(e.name)}</option>`).join('') + (completed.length ? `<optgroup label="Recent results">${completed.slice(0, 15).map(e => `<option value="${esc(e.id)}" ${e.id === S.event ? 'selected' : ''}>${esc(e.name)}</option>`).join('')}</optgroup>` : '');
+  } catch { /* picker stays on "Next card" */ }
+}
+async function load(force = false) {
+  $('#refresh').classList.add('spin');
+  try { S.data = await api('/api/card'); S.errors.card = null; } catch (err) { S.errors.card = err.message; }
+  if (S.data) { S.book = store.get(evKey('book')) || ''; try { const sal = JSON.parse(store.get(evKey('salaries')) || 'null'); if (sal?.csv) { S.salaryCsv = sal.csv; S.salaryName = sal.name; } } catch {} if (force) { S.dfs = null; S.plays = null; S.playsKey = null; } }
+  $('#refresh').classList.remove('spin');
+  renderAll(); setLive();
+  if (['plays', 'parlays', 'odds'].includes(S.tab)) loadPlays(force);
+}
+setTab(['card', 'odds', 'plays', 'parlays', 'dfs', 'breakdown', 'accuracy'].includes(S.tab) ? S.tab : 'card');
+renderAll(); loadEvents(); load();
+</script>
+</body>
+</html>
