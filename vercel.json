@@ -15,7 +15,7 @@
   },
   "crons": [
     { "path": "/api/sync?cron=1", "schedule": "0 12 * * 1" },
-    { "path": "/api/card", "schedule": "0 18 * * 6" }
+    { "path": "/api/sync?snapshot=1", "schedule": "0 13 * * *" }
   ],
   "rewrites": [
     { "source": "/", "destination": "/app.html" },

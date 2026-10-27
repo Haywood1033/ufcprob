@@ -849,6 +849,12 @@ function drawCalibration(el, bins) {
   wireTips(el, 'g[data-i]', g => { const b = bins[+g.dataset.i]; return `<div class="t">Favourite at ${pct(b.lo, 0)}–${pct(b.hi, 0)}</div><div class="r">Avg predicted <b>${pct(b.predicted)}</b></div><div class="r">Actually won <b>${pct(b.actual)}</b></div><div class="r">Bouts <b>${b.n}</b></div>`; });
 }
 async function runBacktestNow() { S.btLoading = true; S.btErr = null; renderAccuracy(); try { S.backtest = await api('/api/backtest?events=25'); } catch (err) { S.btErr = err.message; } S.btLoading = false; renderAccuracy(); }
+// Whether pre-event projections are being saved, and the latest one — so an empty record says why.
+function storageNote(st) {
+  if (!st) return '';
+  if (!st.connected) return `<p class="note" style="margin:0 0 12px;color:var(--neg)"><b>Not saving projections.</b> ${esc(st.note || '')}</p>`;
+  return `<p class="note" style="margin:0 0 12px">Saving to the database (${esc(st.variable)}): ${st.saved} projection${st.saved === 1 ? '' : 's'} saved, ${st.graded} graded${st.last ? `. Last saved: ${esc(st.last.name)}, ${esc(new Date(st.last.savedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }))}` : ''}.</p>`;
+}
 async function loadGrades() { try { S.grades = await api('/api/grades'); } catch { S.grades = { events: [], note: 'Grades unavailable.' }; } renderAccuracy(); }
 function renderAccuracy() {
   const el = $('#panel-accuracy'); const B = S.backtest, G = S.grades;
@@ -864,6 +870,7 @@ function renderAccuracy() {
       <div class="two" style="margin-top:16px"><div class="card"><div class="card-h"><h2>Calibration</h2><span class="sub">When the favourite is x%, how often they won</span></div><div class="card-b"><div class="chart" id="calChart"></div></div></div>
         <div class="card"><div class="card-h"><h2>Event by event</h2></div><div class="table-wrap" style="border:0;border-radius:0;max-height:400px"><table class="data"><thead><tr><th class="l">Date</th><th>Bouts</th><th>Favourites won</th></tr></thead><tbody>${B.perEvent.map(e => `<tr><td class="l">${shortDate(e.date)}</td><td>${e.bouts}</td><td>${e.picksRight} (${pct(e.picksRight / e.bouts, 0)})</td></tr>`).join('')}</tbody></table></div></div></div>` : ''}
     <div class="section-head"><h2>Live record</h2><span class="note">The last projection before each card, graded after it.</span></div>
+    ${G ? storageNote(G.storage) : ''}
     ${!G ? '<div class="skel" style="height:120px"></div>' : G.events.length ? `<div class="table-wrap"><table class="data"><thead><tr><th class="l">Event</th><th>Bouts</th><th>Favourites won</th><th>Log loss</th></tr></thead><tbody>${G.events.map(e => `<tr><td class="l">${esc(e.name)} <span class="muted">${shortDate(e.date)}</span></td><td>${e.bouts}</td><td>${e.picksRight}</td><td>${e.logLoss.toFixed(3)}</td></tr>`).join('')}</tbody></table></div>` : `<div class="card state"><p>${esc(G.note || 'No graded cards yet.')}</p></div>`}`;
   if (B && $('#calChart')) drawCalibration($('#calChart'), B.calibration);
 }

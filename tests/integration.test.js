@@ -95,7 +95,7 @@ test('health and backtest', async () => {
   const h = await call('health');
   assert.equal(h.code, 200);
   assert.ok(h.body.ok, JSON.stringify(h.body.checks.filter(c => !c.ok)));
-  assert.equal(h.body.checks.length, 5);
+  assert.equal(h.body.checks.length, 6);
   const bt = (await call('backtest', { query: { events: '10' } })).body;
   assert.equal(bt.events, 10);
   assert.ok(bt.winner.logLoss.model < bt.winner.logLoss.coin, 'beats a coin flip');

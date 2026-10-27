@@ -13,7 +13,7 @@ Vercel serverless functions, optional Supabase Postgres, one `app.html`.
    [scrape_ufc_stats](https://github.com/Greco1899/scrape_ufc_stats) dataset on GitHub, a weekly
    mirror of UFCStats. UFCStats itself serves a browser challenge to servers, so it isn't called.
    Cards, running order, rounds, live status and bios for debutants come from ESPN.
-3. Optional: set `DATABASE_URL` (Supabase Postgres) to keep each card's pre-fight projection and
+3. Optional: set `DATABASE_URL` or `POSTGRES_URL` (Supabase Postgres; Project Settings → Database → Connection string → URI, transaction pooler, port 6543) to keep each card's pre-fight projection and
    grade it on the Accuracy tab once results reach the dataset.
 4. Open `/api/health`: it loads both sources and fails (HTTP 503, `ok: false`) on empty or stale
    data, not just on errors. It also checks how many fighters on the next card matched history.
