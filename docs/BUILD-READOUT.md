@@ -14,7 +14,7 @@
    past 34, reach, UFC experience and layoff — antisymmetric, fit by ridge-penalised maximum
    likelihood on earlier bouts only.
 4. **Finish model**: per-minute KO and submission hazards from the class rate × (winner's power
-   × loser's vulnerability)^α, scaled by how big a favourite the winner was (^γ); cKO, cSUB, α, γ
+   × loser's vulnerability)^α, scaled by how big a favorite the winner was (^γ); cKO, cSUB, α, γ
    fit by grid search on the likelihood of every past bout's method and round.
 5. **Simulation**: 15,000 runs per bout; winner, then round-by-round finishes, else the judges;
    fantasy stats for the time fought. Every market comes from the same runs.
@@ -47,7 +47,7 @@
 | Who wins × how, log loss | 1.641 | | 1.746 |
 | Goes the distance, Brier | 0.220 | | 0.229 |
 
-Favourites won 62.6%. The finish scales fit to cKO 2.3, cSUB 2.3, α 0.75, γ 0. The grid was
+Favorites won 62.6%. The finish scales fit to cKO 2.3, cSUB 2.3, α 0.75, γ 0. The grid was
 widened after real data pushed cKO to the old edge.
 
 ## Finish timing and predicted fight stats (Oct 2026)
