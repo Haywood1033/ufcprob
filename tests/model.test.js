@@ -205,3 +205,31 @@ test('DFS: projections add up and lineups never pair opponents', () => {
   const ids = exact.lineups[0].players.map(p => p.id);
   assert.ok(!(ids.includes('f1') && ids.includes('f2')));
 });
+
+test('play outcomes: won / lost by market once a bout is decided, parlays lost on any losing leg', () => {
+  const { outcomeOf, withOutcomes } = require('../lib/plays');
+  const bout = (winner, bucket, method) => ({ id: 'b1', a: { id: 'A1' }, b: { id: 'B1' }, result: winner === undefined ? null : { winner, bucket, method, draw: false, nc: false } });
+  const ko = bout('A1', 'KO');
+  assert.equal(outcomeOf(ko, { market: 'win', side: 'A' }), 'won');
+  assert.equal(outcomeOf(ko, { market: 'win', side: 'B' }), 'lost');
+  assert.equal(outcomeOf(ko, { market: 'ko', side: 'A' }), 'won');
+  assert.equal(outcomeOf(ko, { market: 'sub', side: 'A' }), 'lost');
+  assert.equal(outcomeOf(ko, { market: 'itd', side: 'A' }), 'won');
+  assert.equal(outcomeOf(ko, { market: 'distance' }), 'lost');
+  assert.equal(outcomeOf(ko, { market: 'nodistance' }), 'won');
+  assert.equal(outcomeOf(bout('B1', null, 'Decision - Unanimous'), { market: 'dec', side: 'B' }), 'won', 'ESPN method text when the dataset has no bucket yet');
+  assert.equal(outcomeOf(bout(undefined), { market: 'win', side: 'A' }), null, 'not decided');
+  assert.equal(outcomeOf({ ...ko, result: { draw: true } }, { market: 'win', side: 'A' }), null, 'a draw grades nothing');
+  const plays = { sides: { items: [{ bout: 'b1', market: 'win', side: 'A' }] }, props: { items: [] }, parlays: { bySize: { 3: { parlays: [{ legs: [{ bout: 'b1', market: 'win', side: 'B' }, { bout: 'b2', market: 'win', side: 'A' }] }] } } } };
+  const out = withOutcomes(plays, [ko, { id: 'b2', a: { id: 'A2' }, b: { id: 'B2' }, result: null }]);
+  assert.equal(out.sides.items[0].outcome, 'won');
+  assert.equal(out.parlays.bySize[3].parlays[0].outcome, 'lost', 'one losing leg loses the ticket even with a leg pending');
+});
+
+test('lock: the card counts as started at its scheduled start even if ESPN still says pre', () => {
+  const { hasStarted } = require('../lib/lock');
+  const now = Date.parse('2026-10-24T23:30:00Z');
+  assert.equal(hasStarted({ state: 'pre', start: '2026-10-24T23:00Z' }, now), true);
+  assert.equal(hasStarted({ state: 'pre', start: '2026-10-25T01:00Z' }, now), false);
+  assert.equal(hasStarted({ state: 'in', start: '2026-10-25T01:00Z' }, now), true);
+});

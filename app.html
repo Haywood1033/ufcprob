@@ -542,7 +542,7 @@ function renderCard() {
   const segs = [...new Set(S.data.bouts.map(b => b.segment))];
   el.innerHTML = segs.map(sg => `<div class="section-head"><h2>${esc(sg)}</h2><span class="count">${S.data.bouts.filter(b => b.segment === sg).length} bouts</span></div>
     <div class="bouts">${S.data.bouts.filter(b => b.segment === sg).map(boutCard).join('')}</div>`).join('') +
-    `<p class="note foot">Win chances are shares of ${S.data.sims.toLocaleString()} simulated fights per bout. Click a bout for the full breakdown. Fighter records count UFC bouts in the stored history.</p>`;
+    `<p class="note foot">${S.data.frozen ? 'These are the pre-fight numbers, locked at the first bout; results and live status update on top. ' : ''}Win chances are shares of ${S.data.sims.toLocaleString()} simulated fights per bout. Click a bout for the full breakdown. Fighter records count UFC bouts in the stored history.</p>`;
 }
 
 // ── Odds ─────────────────────────────────────────────────────────────────────────────────
@@ -588,15 +588,25 @@ async function loadPlays(force = false) {
 }
 const modeTag = m => (m === 'value' ? '<span class="tag pos">Value · vs your prices</span>' : '<span class="tag">Model ranking</span>');
 const evText = ev => `${ev >= 0 ? '+' : '−'}$${Math.abs(ev).toFixed(2)}`;
+// Won / Lost once the bout is decided (locked plays keep their pre-fight numbers).
+const outTag = o => (o === 'won' ? ' <span class="tag pos" style="height:18px">Won</span>' : o === 'lost' ? ' <span class="tag neg" style="height:18px">Lost</span>' : '');
+function lockTag(L) {
+  if (!L) return '';
+  if (L.state === 'locked') return '<span class="tag pos" data-tip="Saved before the first bout and kept for good: plays don’t change as fights finish, so you can see exactly what the pre-fight research said.">🔒 Locked at the first bout</span>';
+  if (L.state === 'late') return '<span class="tag warn" data-tip="Nothing was saved before the first bout, so these locked on the first load after it, from bouts not yet decided.">🔒 Locked late</span>';
+  if (L.state === 'open') return '<span class="tag" data-tip="Updates until the first bout (late replacements, weigh-ins), then locks for good.">Locks at the first bout</span>';
+  if (L.state === 'unconfirmed') return '<span class="tag warn" data-tip="The database didn’t answer, so the lock couldn’t be confirmed and nothing was changed. Refresh in a minute.">Lock not confirmed yet</span>';
+  return '';
+}
 function playCard(x, i) {
-  return `<div class="card play"><div><div class="play-h"><span class="play-rank">${i + 1}</span><div><div class="play-name">${esc(x.title)}</div><div class="play-sub">${esc(x.sub)}</div></div>
+  return `<div class="card play"><div><div class="play-h"><span class="play-rank">${i + 1}</span><div><div class="play-name">${esc(x.title)}${outTag(x.outcome)}</div><div class="play-sub">${esc(x.sub)}</div></div>
     <div class="play-prob"><div class="big">${pct(x.prob)}</div><div class="small">fair ${esc(x.fairOdds)}</div></div></div>
     ${x.book ? `<div class="bookline"><span class="tag pos">Book ${esc(x.book.raw)} · EV ${evText(x.book.ev)} per $1</span></div>` : ''}</div>
     <ul>${x.reasons.map(r => `<li>${esc(r)}</li>`).join('')}</ul></div>`;
 }
 function ticketCard(t, size) {
-  return `<div class="card"><div class="card-h"><h3>${size}-leg ticket</h3><span class="sub">${pct(t.joint, 1)} · fair ${esc(t.fairOdds)}</span></div>
-    ${t.legs.map(l => `<div class="leg"><span>${esc(l.title)}${l.dec ? ` <span class="muted">${decToAmerican(l.dec)}</span>` : ''}</span><span>${pct(l.prob, 0)}</span></div>`).join('')}
+  return `<div class="card"><div class="card-h"><h3>${size}-leg ticket${outTag(t.outcome)}</h3><span class="sub">${pct(t.joint, 1)} · fair ${esc(t.fairOdds)}</span></div>
+    ${t.legs.map(l => `<div class="leg"><span>${esc(l.title)}${outTag(l.outcome)}${l.dec ? ` <span class="muted">${decToAmerican(l.dec)}</span>` : ''}</span><span>${pct(l.prob, 0)}</span></div>`).join('')}
     <div class="alts">${t.ev !== null && t.ev !== undefined ? `Book pays ${t.bookDecimal.toFixed(2)}x · EV ${evText(t.ev)} per $1.` : 'Different bouts are independent, so the ticket is the legs multiplied.'}</div></div>`;
 }
 function renderPlays() {
@@ -605,7 +615,7 @@ function renderPlays() {
   const P = S.plays;
   el.innerHTML = `
     <div class="card mode-banner">${P.priced ? `<span class="tag pos">${P.priced} prices loaded</span><span class="note">Sections with your prices rank by expected profit against the model.</span>` : '<span class="tag">No book prices</span><span class="note">Plays rank by model strength: the most likely outcomes, not proven value. Paste odds on the <a href="#" data-goto="odds">Odds</a> tab to rank by value.</span>'}
-      <span style="flex:1"></span><span class="note">${S.playsLoading ? 'Updating…' : `Built ${new Date(P.generatedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`}</span></div>
+      <span style="flex:1"></span>${lockTag(P.lock)}<span class="note">${S.playsLoading ? 'Updating…' : `Built ${new Date(P.generatedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`}</span></div>
     <div class="section-head"><h2>Sides</h2>${modeTag(P.sides.mode)}</div><div class="callout">${esc(P.sides.summary)}</div>
     <div class="plays">${P.sides.items.map(playCard).join('') || '<p class="note">Nothing clears the bar.</p>'}</div>
     <div class="section-head"><h2>Props</h2>${modeTag(P.props.mode)}</div><div class="callout">${esc(P.props.summary)}</div>
