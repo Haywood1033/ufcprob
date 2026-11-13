@@ -977,7 +977,11 @@ document.addEventListener('change', e => {
   if (id === 'dkUnique') { S.dkUnique = Number(e.target.value); renderDfs(); }
   if (id === 'dkOpp') { S.dkOpp = e.target.checked; S.dkResult = null; renderDfs(); }
 });
-let resizeT; addEventListener('resize', () => { clearTimeout(resizeT); resizeT = setTimeout(() => { if (S.tab === 'breakdown') renderBreakdown(); if (S.tab === 'accuracy') renderAccuracy(); }, 150); });
+// Charts are redrawn only when the width changes. A phone fires a resize every time its address
+// bar slides away or back during a scroll (height only); rebuilding the tab then would stop the
+// scroll and shift the page under the reader.
+let resizeT, lastW = innerWidth;
+addEventListener('resize', () => { if (innerWidth === lastW) return; lastW = innerWidth; clearTimeout(resizeT); resizeT = setTimeout(() => { if (S.tab === 'breakdown') renderBreakdown(); if (S.tab === 'accuracy') renderAccuracy(); }, 150); });
 $('#eventSelect').addEventListener('change', e => { S.event = e.target.value; const u = new URL(location.href); if (S.event) u.searchParams.set('event', S.event); else u.searchParams.delete('event'); history.replaceState(null, '', u); reset(); load(); });
 $('#refresh').addEventListener('click', () => load(true));
 function reset() { liveSeen = null; S.data = null; S.plays = null; S.playsKey = null; S.dfs = null; S.dkResult = null; S.slip = []; S.slipRes = null; S.bout = null; S.live = null; S.legBout = ''; renderAll(); }
@@ -995,8 +999,9 @@ async function load(force = false) {
   if (S.data) { S.book = store.get(evKey('book')) || ''; try { const sal = JSON.parse(store.get(evKey('salaries')) || 'null'); if (sal?.csv) { S.salaryCsv = sal.csv; S.salaryName = sal.name; } } catch {} if (force === true) { S.dfs = null; S.plays = null; S.playsKey = null; } }
   $('#refresh').classList.remove('spin');
   const typed = $('#bookText')?.value; // prices being typed survive a background reload
+  const y = scrollY;
   renderAll(); setLive();
-  if (force === 'live' && typed !== undefined && $('#bookText')) $('#bookText').value = typed;
+  if (force === 'live') { if (typed !== undefined && $('#bookText')) $('#bookText').value = typed; scrollTo(0, y); } // a background reload never moves the reader
   if (['plays', 'parlays', 'odds'].includes(S.tab)) loadPlays(force === true);
 }
 setTab(['card', 'odds', 'plays', 'parlays', 'dfs', 'breakdown', 'accuracy'].includes(S.tab) ? S.tab : 'card');
