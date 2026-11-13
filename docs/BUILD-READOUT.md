@@ -79,6 +79,19 @@ widened after real data pushed cKO to the old edge.
     window, predicted averages ran about 10% high because the second half of 2026 has been an
     unusually finish-heavy stretch (32% decisions vs a 47–55% norm every year since 2010).
 
+## Locks, live status and the record (Nov 2026)
+
+- **The card starts at its first bout:** the earliest time ESPN lists for the event or any bout on
+  it. The lock and the start time on the page both use it.
+- **A card that is already over is never saved after the fact.** Opening a past card shows today's
+  numbers for it (built only from earlier bouts) but writes nothing; only a copy saved before the
+  first bout is shown as locked. Snapshots locked late (`lockedLate`) are never graded or listed, so
+  the live record holds pre-fight projections only.
+- **Live status** starts ten minutes before the first bout on any open page, and the card is
+  fetched again (`/api/card?fresh=1`, ESPN re-read within seconds) when a bout starts or finishes.
+  The refresh button does the same.
+- **Debutants** show their career record from ESPN. It is display only: the model doesn't use it yet.
+
 ## Known limits
 
 - ESPN's feeds are undocumented. Field names were checked against a live probe (`/api/health?probe=1`).

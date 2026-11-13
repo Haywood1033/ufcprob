@@ -90,6 +90,10 @@ a:hover { text-decoration: underline; }
 .tabs .wrap { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
 .tab { position: relative; height: 46px; padding: 0 14px; background: none; border: 0; color: var(--ink-3); font-weight: 600; font-size: 14px; white-space: nowrap; }
 .tab:hover { color: var(--ink); }
+@media (max-width: 700px) { .tabs .wrap { padding-right: 40px; -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 48px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 48px), transparent); } }
+.data .sticky-name { position: sticky; left: 0; z-index: 1; background: var(--surface); box-shadow: 1px 0 0 var(--line); }
+.data th.sticky-name { z-index: 2; background: var(--surface-2); }
+@media (max-width: 720px) { .data .sticky-name { max-width: 150px; } .data .sticky-name .pname, .data .sticky-name .psub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; } }
 .tab[aria-selected="true"] { color: var(--ink); }
 .tab:first-child { margin-left: -14px; }
 .tab[aria-selected="true"]::after { content: ''; position: absolute; left: 14px; right: 14px; bottom: -1px; height: 2px; border-radius: 2px; background: var(--accent); }
@@ -107,7 +111,6 @@ main.wrap { padding-top: 24px; padding-bottom: 64px; }
 @media (max-width: 900px) { .grid-3 { grid-template-columns: 1fr; } }
 @media (max-width: 720px) {
   .tiles { grid-template-columns: 1fr 1fr; gap: 10px; }
-  .tiles .tile:nth-child(3) { display: none; }
   .tiles .tile { padding: 12px; }
   .tiles .val { font-size: 16px; }
   .tiles .val small { display: block; margin: 2px 0 0; }
@@ -514,21 +517,33 @@ function renderHero() {
   const d = S.data;
   if (!d) { if (S.errors.card) $('#hero').innerHTML = '<h1>ufcprob</h1><div class="meta"><span>Couldn’t load the card.</span></div>'; return; }
   const main = d.bouts[0];
-  const stateChip = d.state === 'in' ? '<span class="chip live"><span class="dot"></span>Live</span>' : d.state === 'post' ? '<span class="chip">Final</span>' : `<span class="chip accent">${d.event.start ? `Main card ${new Date(d.event.start).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' })}` : 'Upcoming'}</span>`;
+  const stateChip = d.state === 'in' ? '<span class="chip live"><span class="dot"></span>Live</span>' : d.state === 'post' ? '<span class="chip">Final</span>' : `<span class="chip accent">${d.event.start ? `First bout ${new Date(d.event.start).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' })}` : 'Upcoming'}</span>`;
   $('#hero').innerHTML = `<h1>${esc(d.event.name)}</h1>
     <div class="meta"><span>${esc(fmtDate(d.event.date))}</span>${d.event.location ? `<span>${esc(d.event.location)}</span>` : ''}${main ? `<span>Main event: ${esc(main.a.name)} vs ${esc(main.b.name)}</span>` : ''}</div>
-    <div class="chips">${stateChip}<span class="chip">${d.bouts.length} bouts</span>${main?.title ? '<span class="chip warn">Title fight</span>' : ''}<span class="chip">${d.sims.toLocaleString()} sims per bout</span><span class="chip">${d.history.bouts.toLocaleString()} past bouts</span></div>`;
+    <div class="chips">${stateChip}<span class="chip">${d.bouts.length} bouts</span>${main?.title ? '<span class="chip warn">Title fight</span>' : ''}</div>`;
   $('#updated').textContent = `Updated ${new Date(d.generatedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
 }
 
 // ── This card ────────────────────────────────────────────────────────────────────────────
 function liveFor(b) { const l = S.live?.get(b.id) || b.live; return l; }
+// A finished bout in words. The winner is named only when the result says who it was (never
+// guessed); method, round and time appear as each becomes known.
+function resultText(b, res, l) {
+  if (res.draw) return 'Draw';
+  if (res.nc) return 'No contest';
+  const who = res.winner === b.a.id ? b.a.name : res.winner === b.b.id ? b.b.name : l?.winner || null;
+  const how = [res.method, res.round ? `R${res.round}` : '', res.time !== null && res.time !== undefined ? clock(res.time) : ''].filter(Boolean).join(' ');
+  return [who || 'Final', how].filter(Boolean).join(' · ');
+}
+// "3-1 UFC", or for a first UFC fight the career record: "UFC debut · 15-4 pro".
+const proRec = f => (f.proRecord ? String(f.proRecord).replace(/-0$/, '') : null);
+const recLine = f => (f.debut && !f.ufcFights ? `UFC debut${proRec(f) ? ` · ${proRec(f)} pro` : ''}` : `${rec(f.record)} UFC`);
 function boutCard(b) {
   const l = liveFor(b), res = b.result;
   const fav = b.pA >= b.pB ? 'a' : 'b';
-  const status = res ? `<span class="tag ${res.nc || res.draw ? '' : 'pos'}">${res.draw ? 'Draw' : res.nc ? 'No contest' : `${esc(res.winner === b.a.id ? b.a.name : b.b.name)} · ${esc(res.method)} R${res.round} ${clock(res.time)}`}</span>`
+  const status = res ? `<span class="tag ${res.nc || res.draw ? '' : 'pos'}">${esc(resultText(b, res, l))}</span>`
     : l?.state === 'in' ? `<span class="tag pos"><span class="live-dot"></span>${esc(l.detail || `R${l.round}`)}</span>` : l?.state === 'post' ? `<span class="tag pos">${esc(l.winner ? `${l.winner} wins` : 'Final')}${l.result ? ` · ${esc(l.result)}` : ''}</span>` : '';
-  const row = (f, p, side) => `<div class="frow ${side === fav ? 'fav' : ''}"><div><div class="fname">${esc(f.name)}</div><div class="psub">${rec(f.record)} UFC · Elo ${f.elo}${f.age ? ` · ${f.age.toFixed(0)} yrs` : ''}</div></div><div class="fprob">${probOut(p)}</div></div>`;
+  const row = (f, p, side) => `<div class="frow ${side === fav ? 'fav' : ''}"><div><div class="fname">${esc(f.name)}</div><div class="psub">${esc(recLine(f))} · Rating ${f.elo}${f.age ? ` · ${f.age.toFixed(0)} yrs` : ''}</div></div><div class="fprob">${probOut(p)}</div></div>`;
   return `<div class="card bout" data-bout="${esc(b.id)}" tabindex="0">
     <div class="bout-h"><span>${esc(b.weightClass || 'Bout')}${b.title ? ' <span class="tag warn">Title</span>' : ''}</span><span>${b.rounds} rounds</span></div>
     ${row(b.a, b.pA, 'a')}${row(b.b, b.pB, 'b')}
@@ -542,7 +557,7 @@ function renderCard() {
   const segs = [...new Set(S.data.bouts.map(b => b.segment))];
   el.innerHTML = segs.map(sg => `<div class="section-head"><h2>${esc(sg)}</h2><span class="count">${S.data.bouts.filter(b => b.segment === sg).length} bouts</span></div>
     <div class="bouts">${S.data.bouts.filter(b => b.segment === sg).map(boutCard).join('')}</div>`).join('') +
-    `<p class="note foot">${S.data.frozen ? 'These are the pre-fight numbers, locked at the first bout; results and live status update on top. ' : ''}Win chances are shares of ${S.data.sims.toLocaleString()} simulated fights per bout. Click a bout for the full breakdown. Fighter records count UFC bouts in the stored history.</p>`;
+    `<p class="note foot">${S.data.frozen ? 'These are the pre-fight numbers, locked at the first bout; results and live status update on top. ' : ''}Win chances are shares of ${S.data.sims.toLocaleString()} simulated fights per bout. Click a bout for the full breakdown. Fighter records count UFC bouts since 2010.</p>`;
 }
 
 // ── Odds ─────────────────────────────────────────────────────────────────────────────────
@@ -567,9 +582,9 @@ function renderOdds() {
   el.innerHTML = `
     <div class="toolbar"><span class="count">Every bout, both fighters. Value against your prices shows under each number.</span><span class="spacer"></span>
       <div class="seg" id="fmtSeg"><button data-v="pct" aria-pressed="${S.fmt === 'pct'}">Probability</button><button data-v="odds" aria-pressed="${S.fmt === 'odds'}">Fair odds</button></div></div>
-    <div class="table-wrap"><table class="data"><thead><tr><th class="l">Fighter</th><th>Win</th><th>KO/TKO</th><th>Submission</th><th>Decision</th><th>Inside distance</th><th data-tip="The fight goes the full scheduled rounds">Distance</th><th data-tip="Fight lasts past 2.5 rounds (7:30 into round 3)">Over 2.5</th></tr></thead><tbody>
+    <div class="table-wrap"><table class="data"><thead><tr><th class="l sticky-name">Fighter</th><th>Win</th><th>KO/TKO</th><th>Submission</th><th>Decision</th><th>Inside distance</th><th data-tip="The fight goes the full scheduled rounds">Distance</th><th data-tip="Fight lasts past 2.5 rounds (7:30 into round 3)">Over 2.5</th></tr></thead><tbody>
       ${S.data.bouts.map(b => ['A', 'B'].map((side, i) => { const f = side === 'A' ? b.a : b.b, m = b.methods[side]; return `<tr class="${i ? 'pair-2' : 'pair-1'}">
-        <td class="l"><div class="pname">${esc(f.name)}</div><div class="psub">${i ? '' : `${esc(b.weightClass)} · ${b.rounds} rds`}${i ? `vs ${esc(b.a.name)}` : ''}</div></td>
+        <td class="l sticky-name"><div class="pname">${esc(f.name)}</div><div class="psub">${i ? '' : `${esc(b.weightClass)} · ${b.rounds} rds`}${i ? `vs ${esc(b.a.name)}` : ''}</div></td>
         <td class="sorted">${cellWithBook(side === 'A' ? b.pA : b.pB, b.id, 'win', side)}</td>
         <td>${cellWithBook(m.KO, b.id, 'ko', side)}</td><td>${cellWithBook(m.SUB, b.id, 'sub', side)}</td><td>${cellWithBook(m.DEC, b.id, 'dec', side)}</td><td>${cellWithBook(m.KO + m.SUB, b.id, 'itd', side)}</td>
         ${i ? '' : `<td rowspan="2">${cellWithBook(b.distance, b.id, 'distance', '')}</td><td rowspan="2">${b.over['2.5'] !== undefined ? cellWithBook(b.over['2.5'], b.id, 'over', '') : '—'}</td>`}</tr>`; }).join('')).join('')}
@@ -595,6 +610,7 @@ function lockTag(L) {
   if (L.state === 'locked') return '<span class="tag pos" data-tip="Saved before the first bout and kept for good: plays don’t change as fights finish, so you can see exactly what the pre-fight research said.">🔒 Locked at the first bout</span>';
   if (L.state === 'late') return '<span class="tag warn" data-tip="Nothing was saved before the first bout, so these locked on the first load after it, from bouts not yet decided.">🔒 Locked late</span>';
   if (L.state === 'open') return '<span class="tag" data-tip="Updates until the first bout (late replacements, weigh-ins), then locks for good.">Locks at the first bout</span>';
+  if (L.state === 'custom' && S.data?.state !== 'pre') return '<span class="tag" data-tip="Ranked against the prices you pasted, from bouts not yet decided. The locked pre-fight plays are unchanged: clear your prices to see them.">Your prices · not the locked plays</span>';
   if (L.state === 'unconfirmed') return '<span class="tag warn" data-tip="The database didn’t answer, so the lock couldn’t be confirmed and nothing was changed. Refresh in a minute.">Lock not confirmed yet</span>';
   return '';
 }
@@ -742,17 +758,18 @@ const STYLE_ROWS = [
   ['tdF15', 'Takedowns', 'td15', 'per 15 min'], ['tdA15', 'Takedowns allowed', 'td15', 'per 15 min (lower is better)'],
   ['kdF15', 'Knockdowns scored', 'kd15', 'per 15 min'], ['subF15', 'Submission attempts', 'sub15', 'per 15 min'],
 ];
+const whyName = n => String(n).replace('Elo gap', 'Rating gap');
 function drawWhy(el, why, a, b) {
   if (!why.length) { el.innerHTML = '<p class="note">The two fighters grade out almost the same on every input.</p>'; return; }
   const w = W(el), rowH = 30, ml = 130, mr = 60, h = rowH * why.length + 24;
   const ext = Math.max(0.2, ...why.map(x => Math.abs(x.logOdds))) * 1.15, x = v => ml + ((v + ext) / (2 * ext)) * (w - ml - mr);
   el.innerHTML = `<svg viewBox="0 0 ${w} ${h}" height="${h}" role="img" aria-label="What drives the win probability">
     <line x1="${x(0)}" x2="${x(0)}" y1="0" y2="${h - 20}" stroke="var(--axis)"/>
-    <text x="0" y="${h - 4}" text-anchor="start" style="fill:${SB}">← favours ${esc(b.name.split(' ').slice(-1)[0])}</text><text x="${w}" y="${h - 4}" text-anchor="end" style="fill:${SA}">favours ${esc(a.name.split(' ').slice(-1)[0])} →</text>
-    ${why.map((r, i) => { const y = i * rowH; return `<g data-i="${i}"><rect x="0" y="${y}" width="${w}" height="${rowH}" fill="transparent"/><text x="0" y="${y + 19}" style="fill:var(--ink-2)">${esc(r.name)}</text>
+    <text x="0" y="${h - 4}" text-anchor="start" style="fill:${SB}">← favors ${esc(b.name.split(' ').slice(-1)[0])}</text><text x="${w}" y="${h - 4}" text-anchor="end" style="fill:${SA}">favors ${esc(a.name.split(' ').slice(-1)[0])} →</text>
+    ${why.map((r, i) => { const y = i * rowH; return `<g data-i="${i}"><rect x="0" y="${y}" width="${w}" height="${rowH}" fill="transparent"/><text x="0" y="${y + 19}" style="fill:var(--ink-2)">${esc(whyName(r.name))}</text>
       <rect x="${Math.min(x(0), x(r.logOdds))}" y="${y + 8}" width="${Math.max(1, Math.abs(x(r.logOdds) - x(0)))}" height="14" rx="3" fill="${r.logOdds >= 0 ? SA : SB}"/>
       <text x="${r.logOdds >= 0 ? x(r.logOdds) + 6 : x(r.logOdds) - 6}" y="${y + 19}" text-anchor="${r.logOdds >= 0 ? 'start' : 'end'}" style="fill:var(--ink-2)">${signed(r.logOdds)}</text></g>`; }).join('')}</svg>`;
-  wireTips(el, 'g[data-i]', g => { const r = why[+g.dataset.i]; return `<div class="t">${esc(r.name)}</div><div class="r">Log-odds <b>${signed(r.logOdds, 3)}</b></div><div class="r">Toward <b>${esc(r.logOdds >= 0 ? a.name : b.name)}</b></div>`; });
+  wireTips(el, 'g[data-i]', g => { const r = why[+g.dataset.i]; return `<div class="t">${esc(whyName(r.name))}</div><div class="r">Pull <b>${signed(r.logOdds, 2)}</b></div><div class="r">Toward <b>${esc(r.logOdds >= 0 ? a.name : b.name)}</b></div>`; });
 }
 function drawOutcomes(el, b) {
   const rows = [['KO', 'A'], ['SUB', 'A'], ['DEC', 'A'], ['KO', 'B'], ['SUB', 'B'], ['DEC', 'B']].map(([m, s]) => ({ m, s, p: b.methods[s][m] }));
@@ -784,9 +801,9 @@ function renderBreakdown() {
   const styleRow = ([k, label, ck, unit]) => { const va = A.style[k], vb = B.style[k], cl = A.classStyle[ck] ?? 0, max = Math.max(va, vb, cl, 0.01) * 1.1;
     return `<div class="cmp-row" data-tip="${esc(`<div class='t'>${label}</div><div class='r'>${A.name} <b>${va.toFixed(2)}</b></div><div class='r'>${B.name} <b>${vb.toFixed(2)}</b></div><div class='r'>Weight-class average <b>${cl.toFixed(2)}</b></div><div class='r'>${unit}</div>`)}">
       <span class="v">${va.toFixed(k === 'kdF15' ? 2 : 1)}</span><span class="bar l"><i style="width:${(va / max) * 100}%"></i></span><span class="lab">${label}</span><span class="bar r"><i style="width:${(vb / max) * 100}%"></i></span><span class="v">${vb.toFixed(k === 'kdF15' ? 2 : 1)}</span></div>`; };
-  const tale = [['UFC record', rec(A.record), rec(B.record)], ['Elo', A.elo, B.elo], ['Age', A.age ? A.age.toFixed(1) : '—', B.age ? B.age.toFixed(1) : '—'], ['Reach', A.reachIn ? `${A.reachIn}″` : '—', B.reachIn ? `${B.reachIn}″` : '—'], ['Height', height(A.heightIn), height(B.heightIn)], ['Stance', A.stance || '—', B.stance || '—'], ['Last fought', A.lastDate ? shortDate(A.lastDate) : 'Debut', B.lastDate ? shortDate(B.lastDate) : 'Debut']];
+  const tale = [['UFC record', A.debut && !A.ufcFights ? 'Debut' : rec(A.record), B.debut && !B.ufcFights ? 'Debut' : rec(B.record)], ...(proRec(A) || proRec(B) ? [['Career record', proRec(A) || '—', proRec(B) || '—']] : []), ['Rating', A.elo, B.elo], ['Age', A.age ? A.age.toFixed(1) : '—', B.age ? B.age.toFixed(1) : '—'], ['Reach', A.reachIn ? `${A.reachIn}″` : '—', B.reachIn ? `${B.reachIn}″` : '—'], ['Height', height(A.heightIn), height(B.heightIn)], ['Stance', A.stance || '—', B.stance || '—'], ['Last fought', A.lastDate ? shortDate(A.lastDate) : 'Debut', B.lastDate ? shortDate(B.lastDate) : 'Debut']];
   const how = (f, k) => { const w = f.finishProfile[k], t = Math.max(1, w.KO + w.SUB + w.DEC); return `<div class="stackbar" style="height:12px" data-tip="${esc(`KO ${w.KO} · Sub ${w.SUB} · Dec ${w.DEC}`)}"><i style="width:${(w.KO / t) * 100}%;background:var(--s2)"></i><i style="width:${(w.SUB / t) * 100}%;background:var(--s4)"></i><i style="width:${(w.DEC / t) * 100}%;background:var(--ink-3)"></i></div><div class="psub">${w.KO} KO · ${w.SUB} sub · ${w.DEC} dec</div>`; };
-  const recent = f => f.recent.length ? f.recent.map(r => `<div class="rec-row"><span class="tag ${r.won === 1 ? 'pos' : r.won === 0 ? 'neg' : ''}">${r.won === 1 ? 'W' : r.won === 0 ? 'L' : 'D'}</span><span class="nm">${esc(r.opp)}</span><span class="muted">${esc(r.method || '')}${r.round ? ` R${r.round}` : ''}</span><span class="muted">${shortDate(r.date)}</span></div>`).join('') : '<p class="note">UFC debut: no tracked bouts.</p>';
+  const recent = f => f.recent.length ? f.recent.map(r => `<div class="rec-row"><span class="tag ${r.won === 1 ? 'pos' : r.won === 0 ? 'neg' : ''}">${r.won === 1 ? 'W' : r.won === 0 ? 'L' : 'D'}</span><span class="nm">${esc(r.opp)}</span><span class="muted">${esc(r.method || '')}${r.round ? ` R${r.round}` : ''}</span><span class="muted">${shortDate(r.date)}</span></div>`).join('') : '<p class="note">UFC debut: no UFC bouts yet.</p>';
   el.innerHTML = `
     <div class="toolbar"><select class="select" id="boutSelect">${S.data.bouts.map(x => `<option value="${esc(x.id)}" ${x.id === S.bout ? 'selected' : ''}>${esc(x.a.name)} vs ${esc(x.b.name)} · ${esc(x.weightClass || '')}</option>`).join('')}</select></div>
     <div class="card"><div class="card-b">
@@ -797,7 +814,7 @@ function renderBreakdown() {
     ${b.stats ? `<div class="card" style="margin-top:16px"><div class="card-h"><h2>Predicted fight stats</h2><span class="sub">Per fighter across ${S.data.sims.toLocaleString()} simulated fights, including early finishes</span></div><div class="card-b stat-grid">
       ${statBlock(b, 'sig', 'Significant strikes landed')}${statBlock(b, 'td', 'Takedowns landed')}</div></div>` : ''}
     <div class="two" style="margin-top:16px">
-      <div class="card"><div class="card-h"><h2>What drives the number</h2><span class="sub">Each input’s pull on the win probability (log-odds)</span></div><div class="card-b"><div class="chart" id="whyChart"></div></div></div>
+      <div class="card"><div class="card-h"><h2>What drives the number</h2><span class="sub">How far each input pulls the win chance toward one fighter; longer bars pull harder</span></div><div class="card-b"><div class="chart" id="whyChart"></div></div></div>
       <div class="card"><div class="card-h"><h2>Tale of the tape</h2></div><div class="table-wrap" style="border:0;border-radius:0"><table class="data"><thead><tr><th class="l">${esc(A.name)}</th><th class="l" style="text-align:center"></th><th>${esc(B.name)}</th></tr></thead><tbody>
         ${tale.map(([k, a, bb]) => `<tr><td class="l">${esc(String(a))}</td><td class="l muted" style="text-align:center">${k}</td><td>${esc(String(bb))}</td></tr>`).join('')}</tbody></table></div></div>
     </div>
@@ -805,7 +822,7 @@ function renderBreakdown() {
       <div class="card"><div class="card-h"><h2>How it ends</h2><span class="sub">Winner and method, share of simulated fights</span></div><div class="card-b"><div class="chart" id="outChart"></div></div></div>
       <div class="card"><div class="card-h"><h2>When it ends</h2><span class="sub">By round; blue = ${esc(A.name.split(' ').slice(-1)[0])}, orange = ${esc(B.name.split(' ').slice(-1)[0])}</span></div><div class="card-b"><div class="chart" id="roundChart"></div></div></div>
     </div>
-    <div class="card" style="margin-top:16px"><div class="card-h"><h2>Style</h2><span class="sub">Recency-weighted, regressed to the weight class; hover for the class average</span></div><div class="card-b cmp">${STYLE_ROWS.map(styleRow).join('')}</div></div>
+    <div class="card" style="margin-top:16px"><div class="card-h"><h2>Style</h2><span class="sub">Recent fights count more; hover for the weight-class average</span></div><div class="card-b cmp">${STYLE_ROWS.map(styleRow).join('')}</div></div>
     <div class="two" style="margin-top:16px">
       <div class="card"><div class="card-h"><h2>${esc(A.name)}</h2><span class="sub">How they win · how they lose</span></div><div class="card-b"><div class="grid-2"><div><div class="section-t">Wins</div>${how(A, 'rawWins')}</div><div><div class="section-t">Losses</div>${how(A, 'rawLosses')}</div></div><div class="section-t" style="margin-top:14px">Recent UFC bouts</div>${recent(A)}</div></div>
       <div class="card"><div class="card-h"><h2>${esc(B.name)}</h2><span class="sub">How they win · how they lose</span></div><div class="card-b"><div class="grid-2"><div><div class="section-t">Wins</div>${how(B, 'rawWins')}</div><div><div class="section-t">Losses</div>${how(B, 'rawLosses')}</div></div><div class="section-t" style="margin-top:14px">Recent UFC bouts</div>${recent(B)}</div></div>
@@ -862,10 +879,10 @@ async function runBacktestNow() { S.btLoading = true; S.btErr = null; renderAccu
 // Whether pre-event projections are being saved, and the latest one — so an empty record says why.
 function storageNote(st) {
   if (!st) return '';
-  if (!st.connected) return `<p class="note" style="margin:0 0 12px;color:var(--neg)"><b>Not saving projections.</b> ${esc(st.note || '')}</p>`;
-  return `<p class="note" style="margin:0 0 12px">Saving to the database (${esc(st.variable)}): ${st.saved} projection${st.saved === 1 ? '' : 's'} saved, ${st.graded} graded${st.last ? `. Last saved: ${esc(st.last.name)}, ${esc(new Date(st.last.savedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }))}` : ''}.</p>`;
+  if (!st.connected) return '<p class="note" style="margin:0 0 12px">The record can’t be reached right now, so new cards aren’t being added to it.</p>';
+  return `<p class="note" style="margin:0 0 12px">${st.saved} card${st.saved === 1 ? '' : 's'} saved before the first bout, ${st.graded} graded so far${st.last ? `. Latest: ${esc(st.last.name)}` : ''}.</p>`;
 }
-async function loadGrades() { try { S.grades = await api('/api/grades'); } catch { S.grades = { events: [], note: 'Grades unavailable.' }; } renderAccuracy(); }
+async function loadGrades() { try { S.grades = await api('/api/grades'); } catch { S.grades = { events: [] }; } renderAccuracy(); }
 function renderAccuracy() {
   const el = $('#panel-accuracy'); const B = S.backtest, G = S.grades;
   el.innerHTML = `
@@ -874,14 +891,14 @@ function renderAccuracy() {
     ${!B && !S.btErr ? '<div class="card state"><h3>Not run yet</h3><p>Replays the last 25 events (a few seconds).</p></div>' : ''}
     ${B ? `<div class="tiles">
       <div class="card tile"><div class="lbl">Favorite won</div><div class="val">${pct(B.winner.accuracy)}</div><div class="note">${B.bouts.toLocaleString()} bouts over ${B.events} events</div></div>
-      <div class="card tile"><div class="lbl">Winner log loss</div><div class="val">${B.winner.logLoss.model.toFixed(3)}</div><div class="note">Elo alone ${B.winner.logLoss.elo.toFixed(3)} · coin flip ${B.winner.logLoss.coin.toFixed(3)} (lower is better)</div></div>
-      <div class="card tile"><div class="lbl">How it ends</div><div class="val">${B.outcome.logLoss.model.toFixed(3)}</div><div class="note">Winner × method log loss · base rates ${B.outcome.logLoss.base.toFixed(3)}</div></div>
-      <div class="card tile"><div class="lbl">Goes the distance</div><div class="val">${B.distance.brier.model.toFixed(3)}</div><div class="note">Brier · base rate ${B.distance.brier.base.toFixed(3)} (${pct(B.distance.rate, 0)} went the distance)</div></div></div>
+      <div class="card tile"><div class="lbl">Picking the winner</div><div class="val">${B.winner.logLoss.model.toFixed(3)}</div><div class="note">Error score, lower is better · ratings alone ${B.winner.logLoss.elo.toFixed(3)} · coin flip ${B.winner.logLoss.coin.toFixed(3)}</div></div>
+      <div class="card tile"><div class="lbl">How it ends</div><div class="val">${B.outcome.logLoss.model.toFixed(3)}</div><div class="note">Winner and method error score, lower is better · long-run averages ${B.outcome.logLoss.base.toFixed(3)}</div></div>
+      <div class="card tile"><div class="lbl">Goes the distance</div><div class="val">${B.distance.brier.model.toFixed(3)}</div><div class="note">Error score, lower is better · long-run average ${B.distance.brier.base.toFixed(3)} (${pct(B.distance.rate, 0)} went the distance)</div></div></div>
       <div class="two" style="margin-top:16px"><div class="card"><div class="card-h"><h2>Calibration</h2><span class="sub">When the favorite is x%, how often they won</span></div><div class="card-b"><div class="chart" id="calChart"></div></div></div>
         <div class="card"><div class="card-h"><h2>Event by event</h2></div><div class="table-wrap" style="border:0;border-radius:0;max-height:400px"><table class="data"><thead><tr><th class="l">Date</th><th>Bouts</th><th>Favorites won</th></tr></thead><tbody>${B.perEvent.map(e => `<tr><td class="l">${shortDate(e.date)}</td><td>${e.bouts}</td><td>${e.picksRight} (${pct(e.picksRight / e.bouts, 0)})</td></tr>`).join('')}</tbody></table></div></div></div>` : ''}
     <div class="section-head"><h2>Live record</h2><span class="note">The last projection before each card, graded after it.</span></div>
     ${G ? storageNote(G.storage) : ''}
-    ${!G ? '<div class="skel" style="height:120px"></div>' : G.events.length ? `<div class="table-wrap"><table class="data"><thead><tr><th class="l">Event</th><th>Bouts</th><th>Favorites won</th><th>Log loss</th></tr></thead><tbody>${G.events.map(e => `<tr><td class="l">${esc(e.name)} <span class="muted">${shortDate(e.date)}</span></td><td>${e.bouts}</td><td>${e.picksRight}</td><td>${e.logLoss.toFixed(3)}</td></tr>`).join('')}</tbody></table></div>` : `<div class="card state"><p>${esc(G.note || 'No graded cards yet.')}</p></div>`}`;
+    ${!G ? '<div class="skel" style="height:120px"></div>' : G.events.length ? `<div class="table-wrap"><table class="data"><thead><tr><th class="l">Event</th><th>Bouts</th><th>Favorites won</th><th data-tip="How far the win chances were from what happened. Lower is better; a coin flip scores 0.693.">Error score</th></tr></thead><tbody>${G.events.map(e => `<tr><td class="l">${esc(e.name)} <span class="muted">${shortDate(e.date)}</span></td><td>${e.bouts}</td><td>${e.picksRight}</td><td>${e.logLoss.toFixed(3)}</td></tr>`).join('')}</tbody></table></div>` : `<div class="card state"><p>${G.storage && !G.storage.connected ? 'The record isn’t available right now.' : 'No graded cards yet. A card is graded a few days after it finishes.'}</p></div>`}`;
   if (B && $('#calChart')) drawCalibration($('#calChart'), B.calibration);
 }
 
@@ -895,15 +912,30 @@ async function pollLive() {
     const m = new Map();
     for (const b of S.data.bouts) { const lb = e.bouts.find(x => x.id && x.id === b.id) || e.bouts.find(x => x.names.map(norm).includes(norm(b.a.name)) || x.names.map(norm).includes(norm(b.b.name))); if (lb) m.set(b.id, lb); }
     S.live = m; if (S.tab === 'card') renderCard();
+    // A bout started or finished since the card was loaded: fetch the card again (once per change)
+    // so results, Won/Lost and the locked numbers are all current.
+    const have = `${S.data.state}|${S.data.bouts.filter(b => b.result).length}`, now = `${e.state}|${e.bouts.filter(x => x.completed).length}`;
+    if (now !== have && now !== liveSeen) { liveSeen = now; load('live'); }
   } catch { /* keep last */ }
 }
-function setLive() { clearInterval(liveTimer); liveTimer = null; if (S.data?.state === 'in') { pollLive(); liveTimer = setInterval(pollLive, 30000); } }
+// Watches the card from shortly before its first bout until it is over, whenever the page was
+// opened. Before that it only checks the clock, with no requests.
+let liveSeen = null;
+function setLive() {
+  clearInterval(liveTimer); liveTimer = null;
+  const d = S.data; if (!d || d.state === 'post') return;
+  const start = Date.parse(d.event.start || '');
+  const tick = () => { if (document.hidden) return; if (d.state === 'in' || !Number.isFinite(start) || Date.now() >= start - 10 * 60000) pollLive(); };
+  tick(); liveTimer = setInterval(tick, 30000);
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden && liveTimer && S.data?.state !== 'post') pollLive(); });
 
 // ── Wiring ───────────────────────────────────────────────────────────────────────────────
 function renderAll() { renderHero(); renderCard(); renderOdds(); renderPlays(); renderParlays(); if (S.tab === 'dfs') renderDfs(); if (S.tab === 'breakdown') renderBreakdown(); if (S.tab === 'accuracy') renderAccuracy(); }
 function setTab(tab) {
   S.tab = tab;
   document.querySelectorAll('.tab').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === tab)));
+  { const bar = $('.tabs .wrap'), sel = $(`.tab[data-tab="${tab}"]`); if (bar && sel) bar.scrollLeft = sel.offsetLeft - (bar.clientWidth - sel.offsetWidth) / 2; }
   document.querySelectorAll('.panel').forEach(p => { p.hidden = p.id !== `panel-${tab}`; });
   const u = new URL(location.href); u.searchParams.set('tab', tab); history.replaceState(null, '', u);
   if (tab === 'dfs') renderDfs();
@@ -948,20 +980,24 @@ document.addEventListener('change', e => {
 let resizeT; addEventListener('resize', () => { clearTimeout(resizeT); resizeT = setTimeout(() => { if (S.tab === 'breakdown') renderBreakdown(); if (S.tab === 'accuracy') renderAccuracy(); }, 150); });
 $('#eventSelect').addEventListener('change', e => { S.event = e.target.value; const u = new URL(location.href); if (S.event) u.searchParams.set('event', S.event); else u.searchParams.delete('event'); history.replaceState(null, '', u); reset(); load(); });
 $('#refresh').addEventListener('click', () => load(true));
-function reset() { S.data = null; S.plays = null; S.playsKey = null; S.dfs = null; S.dkResult = null; S.slip = []; S.slipRes = null; S.bout = null; S.live = null; S.legBout = ''; renderAll(); }
+function reset() { liveSeen = null; S.data = null; S.plays = null; S.playsKey = null; S.dfs = null; S.dkResult = null; S.slip = []; S.slipRes = null; S.bout = null; S.live = null; S.legBout = ''; renderAll(); }
 async function loadEvents() {
   try {
     const { upcoming, completed } = await fetch('/api/events').then(r => r.json());
     $('#eventSelect').innerHTML = '<option value="">Next card</option>' + upcoming.map(e => `<option value="${esc(e.id)}" ${e.id === S.event ? 'selected' : ''}>${esc(e.name)}</option>`).join('') + (completed.length ? `<optgroup label="Recent results">${completed.slice(0, 15).map(e => `<option value="${esc(e.id)}" ${e.id === S.event ? 'selected' : ''}>${esc(e.name)}</option>`).join('')}</optgroup>` : '');
   } catch { /* picker stays on "Next card" */ }
 }
+// force: true = the refresh button (everything rebuilt); 'live' = a bout started or finished
+// (a fresh card, the rest of the page kept).
 async function load(force = false) {
   $('#refresh').classList.add('spin');
-  try { S.data = await api('/api/card'); S.errors.card = null; } catch (err) { S.errors.card = err.message; }
-  if (S.data) { S.book = store.get(evKey('book')) || ''; try { const sal = JSON.parse(store.get(evKey('salaries')) || 'null'); if (sal?.csv) { S.salaryCsv = sal.csv; S.salaryName = sal.name; } } catch {} if (force) { S.dfs = null; S.plays = null; S.playsKey = null; } }
+  try { S.data = await api(force ? '/api/card?fresh=1' : '/api/card'); S.errors.card = null; } catch (err) { S.errors.card = err.message; }
+  if (S.data) { S.book = store.get(evKey('book')) || ''; try { const sal = JSON.parse(store.get(evKey('salaries')) || 'null'); if (sal?.csv) { S.salaryCsv = sal.csv; S.salaryName = sal.name; } } catch {} if (force === true) { S.dfs = null; S.plays = null; S.playsKey = null; } }
   $('#refresh').classList.remove('spin');
+  const typed = $('#bookText')?.value; // prices being typed survive a background reload
   renderAll(); setLive();
-  if (['plays', 'parlays', 'odds'].includes(S.tab)) loadPlays(force);
+  if (force === 'live' && typed !== undefined && $('#bookText')) $('#bookText').value = typed;
+  if (['plays', 'parlays', 'odds'].includes(S.tab)) loadPlays(force === true);
 }
 setTab(['card', 'odds', 'plays', 'parlays', 'dfs', 'breakdown', 'accuracy'].includes(S.tab) ? S.tab : 'card');
 renderAll(); loadEvents(); load();

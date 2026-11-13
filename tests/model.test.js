@@ -233,3 +233,37 @@ test('lock: the card counts as started at its scheduled start even if ESPN still
   assert.equal(hasStarted({ state: 'pre', start: '2026-10-25T01:00Z' }, now), false);
   assert.equal(hasStarted({ state: 'in', start: '2026-10-25T01:00Z' }, now), true);
 });
+
+test('lock: a card that is already over is never saved after the fact', async () => {
+  // A stand-in database: one table of rows keyed by event id, answering the lock's statements.
+  const rows = new Map(), dbPath = require.resolve('../lib/db'), lockPath = require.resolve('../lib/lock');
+  const realDb = require.cache[dbPath], realLock = require.cache[lockPath];
+  const query = async (sql, p) => {
+    if (/^INSERT/.test(sql)) {
+      const id = p[0], had = rows.get(id);
+      if (!had) { rows.set(id, { payload: JSON.parse(p.at(-1)), saved_at: 't0', locked_at: /NOW\(\)\)$|, NOW\(\)\) ON/.test(sql) || /locked_at\)/.test(sql) ? 't1' : null }); return { rows: [{ ...rows.get(id), inserted: true }] }; }
+      if (/WHERE \w+\.locked_at IS NULL/.test(sql)) { if (had.locked_at) return { rows: [] }; had.payload = JSON.parse(p.at(-1)); return { rows: [{ locked_at: null }] }; }
+      had.locked_at ||= 't1'; return { rows: [{ ...had, inserted: false }] };
+    }
+    if (/^UPDATE/.test(sql)) { const had = rows.get(p[0]); if (!had) return { rows: [] }; had.locked_at ||= 't1'; return { rows: [{ ...had, inserted: false }] }; }
+    const had = rows.get(p[0]); return { rows: had ? [had] : [] };
+  };
+  require.cache[dbPath] = { id: dbPath, filename: dbPath, loaded: true, exports: { hasDb: true, query, ensureTables: async () => {}, withTimeout: x => x } };
+  delete require.cache[lockPath];
+  try {
+    const lock = require('../lib/lock');
+    // Never saved before the fights, opened afterwards: nothing is written.
+    assert.deepEqual(await lock.seal('card', { id: 'old' }, { bouts: [], lockedLate: 'x' }, { insert: false }), { state: 'none' });
+    assert.equal(rows.size, 0);
+    // Saved before the first bout: the saved copy is sealed and returned, the candidate ignored.
+    assert.equal((await lock.draft('card', { id: 'ev' }, { v: 'prefight' })).state, 'open');
+    const r = await lock.seal('card', { id: 'ev' }, { v: 'after' }, { insert: false });
+    assert.equal(r.state, 'locked'); assert.equal(r.payload.v, 'prefight');
+    assert.equal((await lock.draft('card', { id: 'ev' }, { v: 'again' })).payload.v, 'prefight', 'a sealed row is never overwritten');
+    // A card still running with nothing saved locks late, as before.
+    assert.equal((await lock.seal('card', { id: 'live' }, { v: 'late' })).state, 'late');
+  } finally {
+    if (realDb) require.cache[dbPath] = realDb; else delete require.cache[dbPath];
+    if (realLock) require.cache[lockPath] = realLock; else delete require.cache[lockPath];
+  }
+});
