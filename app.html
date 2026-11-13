@@ -97,10 +97,7 @@ a:hover { text-decoration: underline; }
 .tab[aria-selected="true"] { color: var(--ink); }
 .tab:first-child { margin-left: -14px; }
 .tab[aria-selected="true"]::after { content: ''; position: absolute; left: 14px; right: 14px; bottom: -1px; height: 2px; border-radius: 2px; background: var(--accent); }
-/* The page is always a good deal taller than the screen, even on a short tab. When a tab is only a
-   little taller, a tablet's browser toolbar sliding away makes the screen taller than the page has
-   room to scroll, the page snaps back, the toolbar returns, and the scroll sticks in a loop. */
-main.wrap { padding-top: 24px; padding-bottom: 64px; min-height: 100vh; min-height: 100lvh; }
+main.wrap { padding-top: 24px; padding-bottom: 64px; }
 .panel[hidden] { display: none; }
 
 /* ── Building blocks ── */
