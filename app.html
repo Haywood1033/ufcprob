@@ -87,7 +87,7 @@ a:hover { text-decoration: underline; }
 .chip small { font-weight: 500; color: var(--ink-3); }
 
 .tabs { position: sticky; top: 56px; z-index: 20; background: var(--bg); border-bottom: 1px solid var(--line); }
-.tabs .wrap { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+.tabs .wrap { display: flex; gap: 4px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
 .tab { position: relative; height: 46px; padding: 0 14px; background: none; border: 0; color: var(--ink-3); font-weight: 600; font-size: 14px; white-space: nowrap; }
 .tab:hover { color: var(--ink); }
 @media (max-width: 700px) { .tabs .wrap { padding-right: 40px; -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 48px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 48px), transparent); } }
@@ -96,8 +96,20 @@ a:hover { text-decoration: underline; }
 @media (max-width: 720px) { .data .sticky-name { max-width: 150px; } .data .sticky-name .pname, .data .sticky-name .psub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; } }
 .tab[aria-selected="true"] { color: var(--ink); }
 .tab:first-child { margin-left: -14px; }
-.tab[aria-selected="true"]::after { content: ''; position: absolute; left: 14px; right: 14px; bottom: -1px; height: 2px; border-radius: 2px; background: var(--accent); }
+.tab[aria-selected="true"]::after { content: ''; position: absolute; left: 14px; right: 14px; bottom: 0; height: 2px; border-radius: 2px; background: var(--accent); }
 main.wrap { padding-top: 24px; padding-bottom: 64px; }
+/* Touch screens (phones, tablets): the document itself never scrolls. The top bar and tab bar sit
+   at the top of a full-height column and only #scroller, below them, scrolls (the event header
+   is moved into it at startup). Same fix as nflprob, measured there on Chrome for iOS: when the
+   document scrolled, the browser's toolbar slid in and out, resized the page mid-scroll and left
+   it resting ~120px down with the first rows under the pinned bars. With nothing scrolling at
+   document level the toolbar stays put. Desktop keeps the pinned (sticky) bars. */
+@media (hover: none), (pointer: coarse) {
+  html { height: 100%; overflow: hidden; overscroll-behavior: none; }
+  body { height: 100%; height: 100dvh; min-height: 0; overflow: hidden; display: flex; flex-direction: column; overscroll-behavior: none; }
+  .topbar, .tabs { position: static; flex: none; }
+  #scroller { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+}
 .panel[hidden] { display: none; }
 
 /* ── Building blocks ── */
@@ -144,7 +156,10 @@ main.wrap { padding-top: 24px; padding-bottom: 64px; }
 .count { font-size: 12px; color: var(--ink-3); }
 
 /* ── Tables ── */
-.table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); }
+/* Sideways-scrolling boxes (tab bar, tables) must never scroll vertically: overflow-x:auto alone
+   makes them vertically scrollable too when their content is a pixel taller, and on a touch screen
+   an upward swipe then scrolls the box instead of the page. */
+.table-wrap { overflow-x: auto; overflow-y: hidden; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); }
 table.data { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; }
 .data th { position: sticky; top: 0; background: var(--surface-2); color: var(--ink-3); font-size: 12px; font-weight: 600; text-align: right; padding: 0 10px; height: 38px; border-bottom: 1px solid var(--line); white-space: nowrap; user-select: none; }
 .data th.l, .data td.l { text-align: left; }
@@ -439,6 +454,7 @@ details.more[open] summary::before { transform: rotate(90deg); }
   </div>
 </nav>
 
+<div id="scroller">
 <main class="wrap">
   <section class="panel" id="panel-card" role="tabpanel"></section>
   <section class="panel" id="panel-odds" role="tabpanel" hidden></section>
@@ -448,6 +464,7 @@ details.more[open] summary::before { transform: rotate(90deg); }
   <section class="panel" id="panel-breakdown" role="tabpanel" hidden></section>
   <section class="panel" id="panel-accuracy" role="tabpanel" hidden></section>
 </main>
+</div>
 
 <div class="tip" id="tip" role="tooltip"></div>
 
@@ -484,6 +501,12 @@ const ICON = {
   upload: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3m0 0L7 8m5-5 5 5"/><path d="M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/></svg>',
   play: '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4v16l13-8z"/></svg>',
 };
+// On touch screens only #scroller scrolls (see the CSS); on desktop the document does. Scroll code
+// goes through these so it works in both. The event header scrolls with the content on touch.
+const scroller = $('#scroller'), TOUCH = matchMedia('(hover: none), (pointer: coarse)').matches;
+if (TOUCH) scroller.prepend($('#hero'));
+const getScroll = () => (TOUCH ? scroller.scrollTop : scrollY);
+const setScroll = y => { if (TOUCH) scroller.scrollTop = y; else scrollTo(0, y); };
 const boutById = id => S.data?.bouts.find(b => b.id === id);
 const METHOD_LABEL = { KO: 'KO/TKO', SUB: 'Submission', DEC: 'Decision' };
 
@@ -895,7 +918,7 @@ function renderAccuracy() {
       <div class="card tile"><div class="lbl">How it ends</div><div class="val">${B.outcome.logLoss.model.toFixed(3)}</div><div class="note">Winner and method error score, lower is better · long-run averages ${B.outcome.logLoss.base.toFixed(3)}</div></div>
       <div class="card tile"><div class="lbl">Goes the distance</div><div class="val">${B.distance.brier.model.toFixed(3)}</div><div class="note">Error score, lower is better · long-run average ${B.distance.brier.base.toFixed(3)} (${pct(B.distance.rate, 0)} went the distance)</div></div></div>
       <div class="two" style="margin-top:16px"><div class="card"><div class="card-h"><h2>Calibration</h2><span class="sub">When the favorite is x%, how often they won</span></div><div class="card-b"><div class="chart" id="calChart"></div></div></div>
-        <div class="card"><div class="card-h"><h2>Event by event</h2></div><div class="table-wrap" style="border:0;border-radius:0;max-height:400px"><table class="data"><thead><tr><th class="l">Date</th><th>Bouts</th><th>Favorites won</th></tr></thead><tbody>${B.perEvent.map(e => `<tr><td class="l">${shortDate(e.date)}</td><td>${e.bouts}</td><td>${e.picksRight} (${pct(e.picksRight / e.bouts, 0)})</td></tr>`).join('')}</tbody></table></div></div></div>` : ''}
+        <div class="card"><div class="card-h"><h2>Event by event</h2></div><div class="table-wrap" style="border:0;border-radius:0;max-height:400px;overflow-y:auto"><table class="data"><thead><tr><th class="l">Date</th><th>Bouts</th><th>Favorites won</th></tr></thead><tbody>${B.perEvent.map(e => `<tr><td class="l">${shortDate(e.date)}</td><td>${e.bouts}</td><td>${e.picksRight} (${pct(e.picksRight / e.bouts, 0)})</td></tr>`).join('')}</tbody></table></div></div></div>` : ''}
     <div class="section-head"><h2>Live record</h2><span class="note">The last projection before each card, graded after it.</span></div>
     ${G ? storageNote(G.storage) : ''}
     ${!G ? '<div class="skel" style="height:120px"></div>' : G.events.length ? `<div class="table-wrap"><table class="data"><thead><tr><th class="l">Event</th><th>Bouts</th><th>Favorites won</th><th data-tip="How far the win chances were from what happened. Lower is better; a coin flip scores 0.693.">Error score</th></tr></thead><tbody>${G.events.map(e => `<tr><td class="l">${esc(e.name)} <span class="muted">${shortDate(e.date)}</span></td><td>${e.bouts}</td><td>${e.picksRight}</td><td>${e.logLoss.toFixed(3)}</td></tr>`).join('')}</tbody></table></div>` : `<div class="card state"><p>${G.storage && !G.storage.connected ? 'The record isn’t available right now.' : 'No graded cards yet. A card is graded a few days after it finishes.'}</p></div>`}`;
@@ -933,6 +956,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden && li
 // ── Wiring ───────────────────────────────────────────────────────────────────────────────
 function renderAll() { renderHero(); renderCard(); renderOdds(); renderPlays(); renderParlays(); if (S.tab === 'dfs') renderDfs(); if (S.tab === 'breakdown') renderBreakdown(); if (S.tab === 'accuracy') renderAccuracy(); }
 function setTab(tab) {
+  if (TOUCH && tab !== S.tab) setScroll(0); // a new tab starts at its top
   S.tab = tab;
   document.querySelectorAll('.tab').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === tab)));
   { const bar = $('.tabs .wrap'), sel = $(`.tab[data-tab="${tab}"]`); if (bar && sel) bar.scrollLeft = sel.offsetLeft - (bar.clientWidth - sel.offsetWidth) / 2; }
@@ -946,8 +970,8 @@ function setTab(tab) {
 document.querySelector('.tabs').addEventListener('click', e => { const b = e.target.closest('.tab'); if (b) setTab(b.dataset.tab); });
 document.addEventListener('click', e => {
   const t = e.target;
-  const go = t.closest('[data-goto]'); if (go) { e.preventDefault(); setTab(go.dataset.goto); scrollTo({ top: 0 }); return; }
-  const bt = t.closest('[data-bout]'); if (bt) { S.bout = bt.dataset.bout; setTab('breakdown'); scrollTo({ top: 0 }); return; }
+  const go = t.closest('[data-goto]'); if (go) { e.preventDefault(); setTab(go.dataset.goto); setScroll(0); return; }
+  const bt = t.closest('[data-bout]'); if (bt) { S.bout = bt.dataset.bout; setTab('breakdown'); setScroll(0); return; }
   const seg = t.closest('.seg button'); if (seg) {
     const id = seg.parentElement.id, v = seg.dataset.v;
     if (id === 'fmtSeg') { S.fmt = v; renderOdds(); renderCard(); }
@@ -999,9 +1023,9 @@ async function load(force = false) {
   if (S.data) { S.book = store.get(evKey('book')) || ''; try { const sal = JSON.parse(store.get(evKey('salaries')) || 'null'); if (sal?.csv) { S.salaryCsv = sal.csv; S.salaryName = sal.name; } } catch {} if (force === true) { S.dfs = null; S.plays = null; S.playsKey = null; } }
   $('#refresh').classList.remove('spin');
   const typed = $('#bookText')?.value; // prices being typed survive a background reload
-  const y = scrollY;
+  const y = getScroll();
   renderAll(); setLive();
-  if (force === 'live') { if (typed !== undefined && $('#bookText')) $('#bookText').value = typed; scrollTo(0, y); } // a background reload never moves the reader
+  if (force === 'live') { if (typed !== undefined && $('#bookText')) $('#bookText').value = typed; setScroll(y); } // a background reload never moves the reader
   if (['plays', 'parlays', 'odds'].includes(S.tab)) loadPlays(force === true);
 }
 setTab(['card', 'odds', 'plays', 'parlays', 'dfs', 'breakdown', 'accuracy'].includes(S.tab) ? S.tab : 'card');

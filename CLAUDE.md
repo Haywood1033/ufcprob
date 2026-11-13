@@ -21,6 +21,15 @@ ufcprob), each its own repo and Vercel project, sharing the same stack and desig
 - The pre-fight card and plays lock at the first bout and show Won/Lost after; numbers must not
   update during or after fights.
 
+- **Touch-screen scrolling:** on touch screens the document never scrolls: `html`/`body` are a
+  fixed-height column (top bar, tab bar, then `#scroller`, the only thing that scrolls; the event
+  header is moved into it at startup). Desktop keeps the sticky bars and document scrolling. Why:
+  on Chrome for iOS, document scrolling made the browser toolbar slide in and out and left the page
+  resting ~120px down with the first rows under the pinned bars (measured and fixed in nflprob first).
+  Don't reintroduce document-level scrolling or `position: sticky/fixed` bars on touch screens;
+  scroll code goes through `getScroll`/`setScroll`; never run layout code on a height-only `resize`;
+  sideways-scrolling boxes keep `overflow-y: hidden`. The app page is served `no-store`.
+
 ## How to work in this repo
 
 - **Commands:** `npm test` runs the test suite (synthetic data, no network). After editing
