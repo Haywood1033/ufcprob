@@ -65,11 +65,16 @@ test('events and status', async () => {
   assert.ok(st.bouts > 2000);
 });
 
-test('plays: model mode without prices, value mode with them', async () => {
+test('plays: model mode with no prices at all, value mode against the card\'s lines or pasted prices', async () => {
   const card = (await call('card')).body;
+  // No prices anywhere (a card ESPN lists no lines for): the model's strongest sides.
+  const { getCardContext } = require('../lib/card'), { buildPlays } = require('../lib/plays'), { makeCard } = require('../lib/parlay');
+  const ctx = await getCardContext({});
+  const bare = buildPlays(ctx.payload, makeCard(ctx.sims), []);
+  assert.equal(bare.sides.mode, 'model');
+  assert.ok(bare.sides.items.length > 0);
   const m = (await call('plays', { body: { book: '' } })).body;
-  assert.equal(m.sides.mode, 'model');
-  assert.ok(m.sides.items.length > 0);
+  assert.equal(m.sides.mode, 'value');
   const b = card.bouts[0], longshot = b.pA < b.pB ? b.a : b.b;
   const v = (await call('plays', { body: { book: `${longshot.name}, ml, +5000\n${b.a.name} vs ${b.b.name}, distance, +900\nNo One, ml, +100` } })).body;
   assert.equal(v.sides.mode, 'value');
@@ -99,4 +104,36 @@ test('health and backtest', async () => {
   const bt = (await call('backtest', { query: { events: '10' } })).body;
   assert.equal(bt.events, 10);
   assert.ok(bt.winner.logLoss.model < bt.winner.logLoss.coin, 'beats a coin flip');
+});
+
+test('sportsbook lines: on the card, and the book Best plays rank against', async () => {
+  const { body } = await call('card');
+  const b = body.bouts[0];
+  assert.equal(b.market.provider, 'DraftKings');
+  assert.ok(Number.isInteger(b.market.a.ml) && Number.isInteger(b.market.b.ml) && Math.abs(b.market.a.ml) >= 100);
+  assert.ok(b.market.pA > 0 && b.market.pA < 1);
+  assert.ok((b.market.a.ml < 0) === (b.market.pA > 0.5) || Math.abs(b.market.pA - 0.5) < 0.03, 'the favorite has the minus price');
+  assert.equal(b.market.total.line, 3.5);
+  const plays = (await call('plays', { body: { book: '' } })).body;
+  assert.equal(plays.book.source, 'DraftKings');
+  assert.equal(plays.bookName, 'DraftKings');
+  assert.ok(plays.book.rows.some(r => r.market === 'win' && r.bout === b.id) && plays.book.rows.some(r => r.market === 'over' && r.line === 3.5));
+  assert.equal(plays.sides.mode, 'value');
+  for (const x of plays.sides.items) assert.ok(x.book.ev >= plays.minEv);
+  // Pasted prices take over and are the visitor's own.
+  const mine = (await call('plays', { body: { book: `${b.a.name}, ml, +400` } })).body;
+  assert.equal(mine.book.source, 'yours'); assert.equal(mine.bookName, null); assert.equal(mine.book.rows.length, 1);
+});
+
+test('sportsbook lines: ESPN odds parsing', () => {
+  const { parseOdds } = require('../lib/espn');
+  const ref = id => ({ $ref: `http://sports.core.api.espn.com/v2/sports/mma/athletes/${id}?lang=en&region=us` });
+  const o = parseOdds({ items: [{ provider: { name: 'DraftKings', priority: 1 }, overUnder: 3.5, overOdds: 130, underOdds: -166,
+    awayAthleteOdds: { moneyLine: 185, open: { moneyLine: { american: '+215' } }, current: { moneyLine: { american: '+185' }, victoryMethod: { koTkoDq: { american: '+450' }, submission: { american: '+900' }, points: { american: '+750' } } }, athlete: ref(4049391) },
+    homeAthleteOdds: { moneyLine: -225, open: { moneyLine: { american: '-265' } }, current: { victoryMethod: { koTkoDq: { american: '+110' }, submission: { american: '+1000' }, points: { american: '+350' } } }, athlete: ref(4426000) } }] });
+  assert.deepEqual(o.sides['4049391'], { ml: 185, open: 215, ko: 450, sub: 900, dec: 750 });
+  assert.deepEqual(o.sides['4426000'], { ml: -225, open: -265, ko: 110, sub: 1000, dec: 350 });
+  assert.deepEqual(o.total, { line: 3.5, over: 130, under: -166 });
+  assert.equal(parseOdds({ items: [] }), null);
+  assert.equal(parseOdds({ items: [{ awayAthleteOdds: { moneyLine: 120, athlete: ref(1) } }] }), null, 'needs a line for both fighters');
 });

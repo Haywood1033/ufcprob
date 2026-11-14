@@ -138,6 +138,18 @@ function installMockFetch({ now, live = false } = {}) {
   const byEspn = new Map(fighters.map(f => [espnId(f), f]));
   const bySeg = new Map();
   for (const e of events) e.bouts.forEach((bt, i) => bySeg.set(compId(e, i), i < 5 ? 'Main Card' : 'Prelims'));
+  // Sportsbook lines in the shape ESPN's core API returns (checked against a live sample, Nov 2026).
+  const byComp = new Map();
+  for (const e of events) e.bouts.forEach((bt, i) => byComp.set(compId(e, i), bt));
+  const toAmer = p => (p >= 0.5 ? -Math.round((100 * p) / (1 - p) / 5) * 5 : Math.round((100 * (1 - p)) / p / 5) * 5);
+  const price = a => ({ american: a > 0 ? `+${a}` : `${a}` });
+  const oddsFor = bt => {
+    const pa = Math.min(0.85, Math.max(0.15, 0.5 + (bt.a.skill - bt.b.skill) * 0.12));
+    const side = (f, p) => ({ favorite: p >= 0.5, moneyLine: toAmer(Math.min(0.9, p * 1.045)), open: { moneyLine: price(toAmer(Math.min(0.9, p * 1.03))) },
+      current: { moneyLine: price(toAmer(Math.min(0.9, p * 1.045))), victoryMethod: { koTkoDq: price(toAmer(p * 0.36)), submission: price(toAmer(p * 0.2)), points: price(toAmer(p * 0.5)) } },
+      athlete: { $ref: `http://sports.core.api.espn.com/v2/sports/mma/athletes/${espnId(f)}?lang=en&region=us` } });
+    return { count: 1, items: [{ provider: { id: '100', name: 'DraftKings', priority: 1 }, overUnder: bt.rounds === 5 ? 3.5 : 2.5, overOdds: -120, underOdds: -110, awayAthleteOdds: side(bt.a, pa), homeAthleteOdds: side(bt.b, 1 - pa) }] };
+  };
   const ok = body => ({ ok: true, status: 200, json: async () => body, text: async () => (typeof body === 'string' ? body : JSON.stringify(body)) });
   const notFound = { ok: false, status: 404, json: async () => ({}), text: async () => '' };
   global.fetch = async url => {
@@ -150,6 +162,7 @@ function installMockFetch({ now, live = false } = {}) {
       return ok({ events: events.filter(e => e.date >= from && e.date <= to).map(e => espnEvent(e, { live })) });
     }
     if ((m = u.match(/leagues\/ufc\/events\/\d+\/competitions\/(\d+)$/))) return bySeg.has(m[1]) ? ok({ id: m[1], cardSegment: { description: bySeg.get(m[1]) } }) : notFound;
+    if ((m = u.match(/leagues\/ufc\/events\/\d+\/competitions\/(\d+)\/odds/))) return byComp.has(m[1]) && !byComp.get(m[1]).res ? ok(oddsFor(byComp.get(m[1]))) : notFound;
     if ((m = u.match(/mma\/athletes\/(\d+)$/))) {
       const f = byEspn.get(m[1]);
       if (!f) return notFound;

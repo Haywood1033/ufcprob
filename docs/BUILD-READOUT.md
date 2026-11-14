@@ -92,6 +92,19 @@ widened after real data pushed cKO to the old edge.
   The refresh button does the same.
 - **Debutants** show their career record from ESPN. It is display only: the model doesn't use it yet.
 
+## Sportsbook lines (Nov 2026)
+
+Each bout's lines come from ESPN's core API (`…/events/{id}/competitions/{id}/odds`, DraftKings at the
+time of writing): moneyline now and at open, method of victory, and the round total (`lib/espn.js`
+`fetchOdds`, `lib/card.js` `marketFor`). They are shown on the card, the Odds tab and the Fight
+breakdown, and they are the book Best plays ranks against unless prices are pasted. They lock with
+the card, and the live record scores the book's own win chances beside the model's.
+
+The model does not use the lines. On 1,730 past bouts with odds (the public nlbair/ufc-data set,
+BestFightOdds, CC BY 4.0) the closing line scored 0.584 and the opening line 0.605 against the
+model's 0.640 (log loss, lower is better); a blend of model and opening line scored 0.597. So a
+"value" play is where the model disagrees with a sharper market, and should be read that way.
+
 ## Lean indicators (Nov 2026)
 
 Each bout carries a win lean (Strong lean 65%+, Lean 57–65%, Toss-up, the same thresholds as

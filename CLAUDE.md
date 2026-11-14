@@ -7,6 +7,8 @@ ufcprob), each its own repo and Vercel project, sharing the same stack and desig
 
 ## Layout
 
+- Sportsbook lines per bout come from ESPN's odds feed (`fetchOdds` in `lib/espn.js`); they lock with
+  the card and are the default book for Best plays. The model itself does not use them.
 - `lib/dataset.js`: fight history (every UFC bout since 2010, round-by-round stats, fighter
   physicals) from a public CSV dataset (`UFC_DATASET_BASE`); `lib/espn.js` for cards and live status.
 - `lib/ratings.js`, `lib/simulator.js`: fighter ratings (finish half-life `UFC_FINISH_HL`) and the
