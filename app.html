@@ -388,6 +388,10 @@ details.more[open] summary::before { transform: rotate(90deg); }
 .bout:hover { border-color: var(--line-2); }
 .bout-h { display: flex; justify-content: space-between; padding: 10px 14px 6px; font-size: 12px; color: var(--ink-3); font-weight: 600; }
 .frow { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 6px 14px; }
+.frow .who { display: flex; align-items: center; gap: 10px; min-width: 0; }
+/* Fighter photo: initials sit underneath, so a missing or slow photo never leaves a hole. */
+.fpic { position: relative; flex: none; width: 44px; height: 44px; border-radius: 50%; overflow: hidden; background: var(--surface-3); border: 1px solid var(--line-2); display: grid; place-items: center; font-size: 13px; font-weight: 700; color: var(--ink-3); }
+.fpic img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center top; }
 .fname { font-weight: 600; font-size: 14px; color: var(--ink-2); }
 .frow.fav .fname { color: var(--ink); }
 .fname.big { font-size: 17px; font-weight: 700; }
@@ -561,14 +565,27 @@ function resultText(b, res, l) {
 // "3-1 UFC", or for a first UFC fight the career record: "UFC debut · 15-4 pro".
 const proRec = f => (f.proRecord ? String(f.proRecord).replace(/-0$/, '') : null);
 const recLine = f => (f.debut && !f.ufcFights ? `UFC debut${proRec(f) ? ` · ${proRec(f)} pro` : ''}` : `${rec(f.record)} UFC`);
+// Fighter photo from ESPN, over the fighter's initials (shown when there is no photo).
+function photo(f) {
+  const ini = String(f.name || '').split(/\s+/).filter(Boolean).map(w => w[0]).slice(0, 2).join('').toUpperCase();
+  const img = f.espnId ? `<img loading="lazy" decoding="async" referrerpolicy="no-referrer" alt="" src="https://a.espncdn.com/combiner/i?img=/i/headshots/mma/players/full/${encodeURIComponent(f.espnId)}.png&w=160&h=116" onerror="this.remove()">` : '';
+  return `<span class="fpic" aria-hidden="true">${esc(ini)}${img}</span>`;
+}
+// The bout's scheduled time, in the viewer's own time zone, until it starts. Shown only when the
+// schedule lists a time per bout; if every bout carries the same time it is just the card's start.
+function boutTime(b, res, l) {
+  if (!S.boutTimes || !b.start || res || (l && l.state !== 'pre')) return '';
+  const t = new Date(b.start); if (isNaN(t)) return '';
+  return `<span data-tip="Scheduled start in your time zone. Later bouts move with how long the earlier ones last.">${esc(t.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }))}</span> · `;
+}
 function boutCard(b) {
   const l = liveFor(b), res = b.result;
   const fav = b.pA >= b.pB ? 'a' : 'b';
   const status = res ? `<span class="tag ${res.nc || res.draw ? '' : 'pos'}">${esc(resultText(b, res, l))}</span>`
     : l?.state === 'in' ? `<span class="tag pos"><span class="live-dot"></span>${esc(l.detail || `R${l.round}`)}</span>` : l?.state === 'post' ? `<span class="tag pos">${esc(l.winner ? `${l.winner} wins` : 'Final')}${l.result ? ` · ${esc(l.result)}` : ''}</span>` : '';
-  const row = (f, p, side) => `<div class="frow ${side === fav ? 'fav' : ''}"><div><div class="fname">${esc(f.name)}</div><div class="psub">${esc(recLine(f))} · Rating ${f.elo}${f.age ? ` · ${f.age.toFixed(0)} yrs` : ''}</div></div><div class="fprob">${probOut(p)}</div></div>`;
+  const row = (f, p, side) => `<div class="frow ${side === fav ? 'fav' : ''}"><div class="who">${photo(f)}<div><div class="fname">${esc(f.name)}</div><div class="psub">${esc(recLine(f))} · Rating ${f.elo}${f.age ? ` · ${f.age.toFixed(0)} yrs` : ''}</div></div></div><div class="fprob">${probOut(p)}</div></div>`;
   return `<div class="card bout" data-bout="${esc(b.id)}" tabindex="0">
-    <div class="bout-h"><span>${esc(b.weightClass || 'Bout')}${b.title ? ' <span class="tag warn">Title</span>' : ''}</span><span>${b.rounds} rounds</span></div>
+    <div class="bout-h"><span>${esc(b.weightClass || 'Bout')}${b.title ? ' <span class="tag warn">Title</span>' : ''}</span><span>${boutTime(b, res, l)}${b.rounds} rounds</span></div>
     ${row(b.a, b.pA, 'a')}${row(b.b, b.pB, 'b')}
     <div class="split-bar" style="margin:4px 14px 0;height:8px"><span style="width:${b.pA * 100}%;background:${SA}"></span><span style="width:${b.pB * 100}%;background:${SB}"></span></div>
     <div class="bout-f"><span>Distance ${pct(b.distance, 0)}</span><span>KO ${pct(b.methods.A.KO + b.methods.B.KO, 0)}</span><span>Sub ${pct(b.methods.A.SUB + b.methods.B.SUB, 0)}</span>${status ? `<span class="spacer"></span>${status}` : ''}</div>
@@ -577,6 +594,7 @@ function boutCard(b) {
 function renderCard() {
   const el = $('#panel-card');
   if (!S.data) { el.innerHTML = S.errors.card ? stateHtml('err', 'The card didn’t load', 'The card endpoint returned an error.', S.errors.card) : '<div class="skel" style="height:420px"></div>'; return; }
+  S.boutTimes = new Set(S.data.bouts.map(b => b.start).filter(Boolean)).size > 1;
   const segs = [...new Set(S.data.bouts.map(b => b.segment))];
   el.innerHTML = segs.map(sg => `<div class="section-head"><h2>${esc(sg)}</h2><span class="count">${S.data.bouts.filter(b => b.segment === sg).length} bouts</span></div>
     <div class="bouts">${S.data.bouts.filter(b => b.segment === sg).map(boutCard).join('')}</div>`).join('') +
