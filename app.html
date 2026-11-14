@@ -575,10 +575,11 @@ const proRec = f => (f.proRecord ? String(f.proRecord).replace(/-0$/, '') : null
 const recLine = f => (f.debut && !f.ufcFights ? `UFC debut${proRec(f) ? ` · ${proRec(f)} pro` : ''}` : `${rec(f.record)} UFC`);
 // The sportsbook's line for a fighter, as American odds ("−225"), from the card's own lines.
 const amer = a => (a === null || a === undefined ? '' : a > 0 ? `+${a}` : `−${Math.abs(a)}`);
-const bookName = () => S.data?.bouts.find(b => b.market)?.market.provider || null;
+// The card's own lines are always called "Vegas" on the page, whichever sportsbook supplies them.
+const bookName = () => (S.data?.bouts.some(b => b.market) ? 'Vegas' : null);
 function lineTip(b, side) {
   const m = b.market, s = side === 'a' ? m.a : m.b, p = side === 'a' ? m.pA : 1 - m.pA, mine = side === 'a' ? b.pA : b.pB;
-  return `<div class='t'>${esc(m.provider || 'Sportsbook')} line</div><div class='r'>Now <b>${amer(s.ml)}</b></div>${s.open !== null && s.open !== s.ml ? `<div class='r'>Opened <b>${amer(s.open)}</b></div>` : ''}<div class='r'>Book’s win chance <b>${pct(p)}</b></div><div class='r'>Ours <b>${pct(mine)}</b></div>`;
+  return `<div class='t'>Vegas line</div><div class='r'>Now <b>${amer(s.ml)}</b></div>${s.open !== null && s.open !== s.ml ? `<div class='r'>Opened <b>${amer(s.open)}</b></div>` : ''}<div class='r'>Vegas win chance <b>${pct(p)}</b></div><div class='r'>Ours <b>${pct(mine)}</b></div>`;
 }
 // Lean indicators: how firmly the numbers side with the favorite, and whether a finish or a decision
 // is expected. Same thresholds as lib/lean.js, which the Accuracy tab grades.
@@ -627,20 +628,20 @@ function renderCard() {
   const segs = [...new Set(S.data.bouts.map(b => b.segment))];
   el.innerHTML = segs.map(sg => `<div class="section-head"><h2>${esc(sg)}</h2><span class="count">${S.data.bouts.filter(b => b.segment === sg).length} bouts</span></div>
     <div class="bouts">${S.data.bouts.filter(b => b.segment === sg).map(boutCard).join('')}</div>`).join('') +
-    `<p class="note foot">${S.data.frozen ? 'These are the pre-fight numbers, locked at the first bout; results and live status update on top. ' : ''}Win chances are shares of ${S.data.sims.toLocaleString()} simulated fights per bout. Click a bout for the full breakdown. Fighter records count UFC bouts since 2010.${bookName() ? ` The smaller number under each win chance is the ${esc(bookName())} line.` : ''}</p>`;
+    `<p class="note foot">${S.data.frozen ? 'These are the pre-fight numbers, locked at the first bout; results and live status update on top. ' : ''}Win chances are shares of ${S.data.sims.toLocaleString()} simulated fights per bout. Click a bout for the full breakdown. Fighter records count UFC bouts since 2010.${bookName() ? ` The smaller number under each win chance is the Vegas line.` : ''}</p>`;
 }
 
 // ── Odds ─────────────────────────────────────────────────────────────────────────────────
 function bookBox() {
   const b = S.plays?.book;
-  return `<div class="card"><div class="card-h"><h2>Your prices</h2><span class="sub">${S.plays?.book?.source && S.plays.book.source !== 'yours' ? `Using ${esc(S.plays.book.source)} lines. Paste your own to compare against those instead (saved in this browser)` : 'Paste odds to rank by value (saved in this browser)'}</span></div>
+  return `<div class="card"><div class="card-h"><h2>Your prices</h2><span class="sub">${S.plays?.book?.source && S.plays.book.source !== 'yours' ? `Using Vegas lines. Paste your own to compare against those instead (saved in this browser)` : 'Paste odds to rank by value (saved in this browser)'}</span></div>
     <div class="card-b"><textarea class="paste" id="bookText" spellcheck="false" placeholder="One price per line:&#10;Fighter Name, ml, -150&#10;Fighter Name, ko, +200      (also: sub, dec, itd)&#10;Fighter A vs Fighter B, distance, -120&#10;Fighter A vs Fighter B, over 2.5, -110">${esc(S.book)}</textarea>
       <div class="toolbar" style="margin:10px 0 0"><button class="btn primary" id="bookApply">Price these</button><button class="btn ghost" id="bookClear">Clear</button>
         <span class="count">${b && (b.matched || b.skipped.length) ? `${b.matched} price${b.matched === 1 ? '' : 's'} matched${b.skipped.length ? ` · ${b.skipped.length} skipped` : ''}` : 'American or decimal odds.'}</span></div>
       ${b?.skipped?.length ? `<ul class="skipped">${b.skipped.slice(0, 8).map(s => `<li>${esc(s.line)} — ${esc(s.why)}</li>`).join('')}</ul>` : ''}</div></div>`;
 }
 function bookPrice(bout, market, side) { return (S.plays?.book?.rows || []).find(r => r.bout === bout && r.market === market && (r.side || '') === (side || '') && (market !== 'over' || r.line === 2.5)); }
-const bookSource = () => { const s = S.plays?.book?.source; return !s ? null : s === 'yours' ? 'your prices' : `${s} lines`; };
+const bookSource = () => { const s = S.plays?.book?.source; return !s ? null : s === 'yours' ? 'your prices' : 'Vegas lines'; };
 function cellWithBook(p, bout, market, side) {
   const r = bookPrice(bout, market, side);
   if (!r) return probOut(p);
@@ -672,7 +673,7 @@ async function loadPlays(force = false) {
   try { S.plays = await apiPost('/api/plays', { book: S.book }); } catch (err) { S.playsErr = err.message; }
   S.playsLoading = false; renderPlays(); renderParlays(); if (S.tab === 'odds') renderOdds();
 }
-const modeTag = m => (m === 'value' ? `<span class="tag pos">Value · vs ${esc(S.plays?.bookName ? `${S.plays.bookName} lines` : 'your prices')}</span>` : '<span class="tag">Model ranking</span>');
+const modeTag = m => (m === 'value' ? `<span class="tag pos">Value · vs ${S.plays?.bookName ? 'Vegas lines' : 'your prices'}</span>` : '<span class="tag">Model ranking</span>');
 const evText = ev => `${ev >= 0 ? '+' : '−'}$${Math.abs(ev).toFixed(2)}`;
 // Won / Lost once the bout is decided (locked plays keep their pre-fight numbers).
 const outTag = o => (o === 'won' ? ' <span class="tag pos" style="height:18px">Won</span>' : o === 'lost' ? ' <span class="tag neg" style="height:18px">Lost</span>' : '');
@@ -696,18 +697,20 @@ function ticketCard(t, size) {
     ${t.legs.map(l => `<div class="leg"><span>${esc(l.title)}${outTag(l.outcome)}${l.dec ? ` <span class="muted">${decToAmerican(l.dec)}</span>` : ''}</span><span>${pct(l.prob, 0)}</span></div>`).join('')}
     <div class="alts">${t.ev !== null && t.ev !== undefined ? `Book pays ${t.bookDecimal.toFixed(2)}x · EV ${evText(t.ev)} per $1.` : 'Different bouts are independent, so the ticket is the legs multiplied.'}</div></div>`;
 }
+// Plays saved before the wording changed carry the sportsbook's name in their text.
+const vegas = s => String(s ?? '').replace(/DraftKings[’']s/g, 'the Vegas').replace(/DraftKings/g, 'Vegas');
 function renderPlays() {
   const el = $('#panel-plays');
   if (!S.data || !S.plays) { el.innerHTML = S.playsErr ? stateHtml('err', 'Couldn’t build the best plays', 'The plays endpoint returned an error.', S.playsErr) : '<div class="skel" style="height:420px"></div>'; return; }
   const P = S.plays;
   el.innerHTML = `
-    <div class="card mode-banner">${P.priced ? `<span class="tag pos">${P.bookName ? `${esc(P.bookName)} lines` : `${P.priced} of your prices`}</span><span class="note">Plays rank by expected profit: where our number says a price pays more than it should.</span>` : '<span class="tag">No book prices</span><span class="note">Plays rank by model strength: the most likely outcomes, not proven value. Paste odds on the <a href="#" data-goto="odds">Odds</a> tab to rank by value.</span>'}
+    <div class="card mode-banner">${P.priced ? `<span class="tag pos">${P.bookName ? 'Vegas lines' : `${P.priced} of your prices`}</span><span class="note">Plays rank by expected profit: where our number says a price pays more than it should.</span>` : '<span class="tag">No book prices</span><span class="note">Plays rank by model strength: the most likely outcomes, not proven value. Paste odds on the <a href="#" data-goto="odds">Odds</a> tab to rank by value.</span>'}
       <span style="flex:1"></span>${lockTag(P.lock)}<span class="note">${S.playsLoading ? 'Updating…' : `Built ${new Date(P.generatedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`}</span></div>
-    <div class="section-head"><h2>Sides</h2>${modeTag(P.sides.mode)}</div><div class="callout">${esc(P.sides.summary)}</div>
+    <div class="section-head"><h2>Sides</h2>${modeTag(P.sides.mode)}</div><div class="callout">${esc(vegas(P.sides.summary))}</div>
     <div class="plays">${P.sides.items.map(playCard).join('') || '<p class="note">Nothing clears the bar.</p>'}</div>
-    <div class="section-head"><h2>Props</h2>${modeTag(P.props.mode)}</div><div class="callout">${esc(P.props.summary)}</div>
+    <div class="section-head"><h2>Props</h2>${modeTag(P.props.mode)}</div><div class="callout">${esc(vegas(P.props.summary))}</div>
     <div class="plays">${P.props.items.map(playCard).join('') || '<p class="note">Nothing clears the bar.</p>'}</div>
-    <div class="section-head"><h2>Parlays</h2>${modeTag(P.parlays.mode)}</div><div class="callout">${esc(P.parlays.summary)}</div>
+    <div class="section-head"><h2>Parlays</h2>${modeTag(P.parlays.mode)}</div><div class="callout">${esc(vegas(P.parlays.summary))}</div>
     <div class="tickets">${[3, 4, 5].map(n => P.parlays.bySize[n].parlays[0] ? ticketCard(P.parlays.bySize[n].parlays[0], n) : `<div class="card state"><p>${esc(P.parlays.bySize[n].note || '')}</p></div>`).join('')}</div>
     <p class="note foot">Value plays need ${pct(P.minEv, 0)}+ expected profit per $1 against the price. Props inside one bout are priced together (a KO win and "doesn’t go the distance" move together).</p>`;
 }
@@ -742,7 +745,7 @@ function renderParlays() {
       <div class="card"><div class="card-h"><h2>Same-fight legs</h2></div><div class="card-b note">Legs from the same bout are priced from the same simulated fights. “Fighter by KO” plus “doesn’t go the distance” is far more likely together than multiplying them suggests (correlation above 1); “by decision” plus “under 1.5 rounds” can’t both happen (0). Legs from different bouts are independent.</div></div>
     </div>
     <div class="section-head"><h2>Auto tickets</h2>${S.plays ? modeTag(S.plays.parlays.mode) : ''}</div>
-    ${S.plays ? `<div class="callout">${esc(S.plays.parlays.summary)}</div><div class="tickets">${[3, 4, 5].map(n => { const t = S.plays.parlays.bySize[n].parlays[0]; return t ? ticketCard(t, n) : `<div class="card state"><p>${esc(S.plays.parlays.bySize[n].note || '')}</p></div>`; }).join('')}</div>` : '<div class="skel" style="height:200px"></div>'}`;
+    ${S.plays ? `<div class="callout">${esc(vegas(S.plays.parlays.summary))}</div><div class="tickets">${[3, 4, 5].map(n => { const t = S.plays.parlays.bySize[n].parlays[0]; return t ? ticketCard(t, n) : `<div class="card state"><p>${esc(S.plays.parlays.bySize[n].note || '')}</p></div>`; }).join('')}</div>` : '<div class="skel" style="height:200px"></div>'}`;
 }
 async function priceSlip() {
   if (!S.slip.length) { S.slipRes = null; renderParlays(); return; }
@@ -878,9 +881,9 @@ function renderBreakdown() {
   el.innerHTML = `
     <div class="toolbar"><select class="select" id="boutSelect">${S.data.bouts.map(x => `<option value="${esc(x.id)}" ${x.id === S.bout ? 'selected' : ''}>${esc(x.a.name)} vs ${esc(x.b.name)} · ${esc(x.weightClass || '')}</option>`).join('')}</select></div>
     <div class="card"><div class="card-b">
-      <div class="face"><div>${photo(A, 'lg')}<div class="fname big" style="color:${SA}">${esc(A.name)}</div><div class="big-prob">${pct(b.pA)}</div><div class="note">fair ${esc(b.fair.a)}${b.market ? ` · ${esc(b.market.provider || 'book')} ${amer(b.market.a.ml)}` : ''}</div></div>
+      <div class="face"><div>${photo(A, 'lg')}<div class="fname big" style="color:${SA}">${esc(A.name)}</div><div class="big-prob">${pct(b.pA)}</div><div class="note">fair ${esc(b.fair.a)}${b.market ? ` · Vegas ${amer(b.market.a.ml)}` : ''}</div></div>
         <div class="mid"><div class="note">${esc(b.weightClass || '')} · ${b.rounds} rounds${b.title ? ' · title' : ''}</div><div class="split-bar"><span style="width:${b.pA * 100}%;background:${SA}">${pct(b.pA, 0)}</span><span style="width:${b.pB * 100}%;background:${SB}">${pct(b.pB, 0)}</span></div><div class="note" style="margin-top:6px">Goes the distance ${pct(b.distance, 0)} · finish ${pct(b.insideDistance, 0)}</div><div class="leans" style="justify-content:center;padding:10px 0 0">${leanTags(b)}</div></div>
-        <div style="text-align:right">${photo(B, 'lg right')}<div class="fname big" style="color:${SB}">${esc(B.name)}</div><div class="big-prob">${pct(b.pB)}</div><div class="note">fair ${esc(b.fair.b)}${b.market ? ` · ${esc(b.market.provider || 'book')} ${amer(b.market.b.ml)}` : ''}</div></div></div>
+        <div style="text-align:right">${photo(B, 'lg right')}<div class="fname big" style="color:${SB}">${esc(B.name)}</div><div class="big-prob">${pct(b.pB)}</div><div class="note">fair ${esc(b.fair.b)}${b.market ? ` · Vegas ${amer(b.market.b.ml)}` : ''}</div></div></div>
     </div></div>
     ${b.stats ? `<div class="card" style="margin-top:16px"><div class="card-h"><h2>Predicted fight stats</h2><span class="sub">Per fighter across ${S.data.sims.toLocaleString()} simulated fights, including early finishes</span></div><div class="card-b stat-grid">
       ${statBlock(b, 'sig', 'Significant strikes landed')}${statBlock(b, 'td', 'Takedowns landed')}</div></div>` : ''}
@@ -976,7 +979,7 @@ function renderAccuracy() {
         <div class="card"><div class="card-h"><h2>Event by event</h2></div><div class="table-wrap" style="border:0;border-radius:0;max-height:400px;overflow-y:auto"><table class="data"><thead><tr><th class="l">Date</th><th>Bouts</th><th>Favorites won</th></tr></thead><tbody>${B.perEvent.map(e => `<tr><td class="l">${shortDate(e.date)}</td><td>${e.bouts}</td><td>${e.picksRight} (${pct(e.picksRight / e.bouts, 0)})</td></tr>`).join('')}</tbody></table></div></div></div>${leanTable(B.leans, true)}` : ''}
     <div class="section-head"><h2>Live record</h2><span class="note">The last projection before each card, graded after it.</span></div>
     ${G ? storageNote(G.storage) : ''}
-    ${!G ? '<div class="skel" style="height:120px"></div>' : G.events.length ? `<div class="table-wrap"><table class="data"><thead><tr><th class="l">Event</th><th>Bouts</th><th>Favorites won</th><th data-tip="How far the win chances were from what happened. Lower is better; a coin flip scores 0.693.">Error score</th><th data-tip="The sportsbook’s error score on the same card, from its lines at the lock. Lower is better.">Sportsbook</th></tr></thead><tbody>${G.events.map(e => `<tr><td class="l">${esc(e.name)} <span class="muted">${shortDate(e.date)}</span></td><td>${e.bouts}</td><td>${e.picksRight}</td><td>${e.logLoss.toFixed(3)}</td><td class="dim">${e.bookLogLoss !== undefined ? e.bookLogLoss.toFixed(3) : '—'}</td></tr>`).join('')}</tbody></table></div>${leanTable(G.leans, false)}` : `<div class="card state"><p>${G.storage && !G.storage.connected ? 'The record isn’t available right now.' : 'No graded cards yet. A card is graded a few days after it finishes.'}</p></div>`}`;
+    ${!G ? '<div class="skel" style="height:120px"></div>' : G.events.length ? `<div class="table-wrap"><table class="data"><thead><tr><th class="l">Event</th><th>Bouts</th><th>Favorites won</th><th data-tip="How far the win chances were from what happened. Lower is better; a coin flip scores 0.693.">Error score</th><th data-tip="The Vegas lines’ error score on the same card, as they stood at the lock. Lower is better.">Vegas</th></tr></thead><tbody>${G.events.map(e => `<tr><td class="l">${esc(e.name)} <span class="muted">${shortDate(e.date)}</span></td><td>${e.bouts}</td><td>${e.picksRight}</td><td>${e.logLoss.toFixed(3)}</td><td class="dim">${e.bookLogLoss !== undefined ? e.bookLogLoss.toFixed(3) : '—'}</td></tr>`).join('')}</tbody></table></div>${leanTable(G.leans, false)}` : `<div class="card state"><p>${G.storage && !G.storage.connected ? 'The record isn’t available right now.' : 'No graded cards yet. A card is graded a few days after it finishes.'}</p></div>`}`;
   if (B && $('#calChart')) drawCalibration($('#calChart'), B.calibration);
 }
 

@@ -115,8 +115,8 @@ test('sportsbook lines: on the card, and the book Best plays rank against', asyn
   assert.ok((b.market.a.ml < 0) === (b.market.pA > 0.5) || Math.abs(b.market.pA - 0.5) < 0.03, 'the favorite has the minus price');
   assert.equal(b.market.total.line, 3.5);
   const plays = (await call('plays', { body: { book: '' } })).body;
-  assert.equal(plays.book.source, 'DraftKings');
-  assert.equal(plays.bookName, 'DraftKings');
+  assert.equal(plays.book.source, 'Vegas');
+  assert.equal(plays.bookName, 'Vegas');
   assert.ok(plays.book.rows.some(r => r.market === 'win' && r.bout === b.id) && plays.book.rows.some(r => r.market === 'over' && r.line === 3.5));
   assert.equal(plays.sides.mode, 'value');
   for (const x of plays.sides.items) assert.ok(x.book.ev >= plays.minEv);
