@@ -267,3 +267,12 @@ test('lock: a card that is already over is never saved after the fact', async ()
     if (realLock) require.cache[lockPath] = realLock; else delete require.cache[lockPath];
   }
 });
+
+test('lean indicators: tiers and their summary', () => {
+  const { winLean, paceLean, summarize } = require('../lib/lean');
+  assert.deepEqual([0.5, 0.569, 0.57, 0.649, 0.65, 0.2, 0.4].map(winLean), ['tossup', 'tossup', 'lean', 'lean', 'strong', 'strong', 'lean']);
+  assert.deepEqual([0.4, 0.41, 0.5, 0.59, 0.6].map(paceLean), ['finish', 'open', 'open', 'open', 'decision']);
+  const s = summarize([{ fav: 0.7, favWon: true, dist: 0.3, went: false }, { fav: 0.7, favWon: false, dist: 0.7, went: true }, { fav: 0.52, favWon: true, dist: 0.5, went: true }]);
+  assert.deepEqual(s.win.map(t => [t.tier, t.n, t.hit]), [['strong', 2, 1], ['lean', 0, 0], ['tossup', 1, 1]]);
+  assert.deepEqual(s.pace.map(t => [t.tier, t.n, t.hit]), [['finish', 1, 1], ['decision', 1, 1], ['open', 1, 0]]);
+});

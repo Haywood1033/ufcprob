@@ -185,6 +185,9 @@ table.data { width: 100%; border-collapse: separate; border-spacing: 0; font-siz
 .tag.neg { color: var(--neg); border-color: rgba(248, 113, 113, 0.3); background: var(--neg-wash); }
 .tag.warn { color: var(--warn); border-color: rgba(251, 191, 36, 0.3); background: var(--warn-wash); }
 .tag.info { color: var(--info); border-color: rgba(96, 165, 250, 0.3); background: var(--info-wash); }
+.tag.accent { color: var(--accent); border-color: rgba(45, 212, 191, 0.3); background: var(--accent-wash); }
+.tag.quiet { color: var(--ink-3); border-color: var(--line); }
+.leans { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 14px 0; }
 .tags { display: flex; gap: 4px; justify-content: flex-start; }
 .conf { display: inline-flex; gap: 2px; vertical-align: middle; }
 .conf i { width: 4px; height: 12px; border-radius: 1px; background: var(--line-2); }
@@ -565,6 +568,19 @@ function resultText(b, res, l) {
 // "3-1 UFC", or for a first UFC fight the career record: "UFC debut · 15-4 pro".
 const proRec = f => (f.proRecord ? String(f.proRecord).replace(/-0$/, '') : null);
 const recLine = f => (f.debut && !f.ufcFights ? `UFC debut${proRec(f) ? ` · ${proRec(f)} pro` : ''}` : `${rec(f.record)} UFC`);
+// Lean indicators: how firmly the numbers side with the favorite, and whether a finish or a decision
+// is expected. Same thresholds as lib/lean.js, which the Accuracy tab grades.
+const winLean = p => { const fav = Math.max(p, 1 - p); return fav >= 0.65 ? 'strong' : fav >= 0.57 ? 'lean' : 'tossup'; };
+const paceLean = d => (1 - d >= 0.6 ? 'finish' : d >= 0.6 ? 'decision' : 'open');
+function leanTags(b) {
+  const fav = b.pA >= b.pB ? b.a : b.b, p = Math.max(b.pA, b.pB), w = winLean(p), pc = paceLean(b.distance), who = esc(last(fav.name));
+  const win = w === 'strong' ? `<span class="tag accent" data-tip="The favorite wins 65% or more of the simulated fights (${pct(p, 0)} here).">⚡ Strong lean · ${who}</span>`
+    : w === 'lean' ? `<span class="tag" data-tip="The favorite wins 57–65% of the simulated fights (${pct(p, 0)} here).">Lean · ${who}</span>`
+    : `<span class="tag quiet" data-tip="Neither fighter reaches 57% (${pct(p, 0)} for the favorite).">Toss-up</span>`;
+  const pace = pc === 'finish' ? `<span class="tag warn" data-tip="A knockout or submission in ${pct(b.insideDistance ?? 1 - b.distance, 0)} of the simulated fights.">Finish likely</span>`
+    : pc === 'decision' ? `<span class="tag info" data-tip="Goes to the judges in ${pct(b.distance, 0)} of the simulated fights.">Decision likely</span>` : '';
+  return win + pace;
+}
 // Fighter photo from ESPN, over the fighter's initials (shown when there is no photo).
 function photo(f) {
   const ini = String(f.name || '').split(/\s+/).filter(Boolean).map(w => w[0]).slice(0, 2).join('').toUpperCase();
@@ -588,6 +604,7 @@ function boutCard(b) {
     <div class="bout-h"><span>${esc(b.weightClass || 'Bout')}${b.title ? ' <span class="tag warn">Title</span>' : ''}</span><span>${boutTime(b, res, l)}${b.rounds} rounds</span></div>
     ${row(b.a, b.pA, 'a')}${row(b.b, b.pB, 'b')}
     <div class="split-bar" style="margin:4px 14px 0;height:8px"><span style="width:${b.pA * 100}%;background:${SA}"></span><span style="width:${b.pB * 100}%;background:${SB}"></span></div>
+    <div class="leans">${leanTags(b)}</div>
     <div class="bout-f"><span>Distance ${pct(b.distance, 0)}</span><span>KO ${pct(b.methods.A.KO + b.methods.B.KO, 0)}</span><span>Sub ${pct(b.methods.A.SUB + b.methods.B.SUB, 0)}</span>${status ? `<span class="spacer"></span>${status}` : ''}</div>
   </div>`;
 }
@@ -849,7 +866,7 @@ function renderBreakdown() {
     <div class="toolbar"><select class="select" id="boutSelect">${S.data.bouts.map(x => `<option value="${esc(x.id)}" ${x.id === S.bout ? 'selected' : ''}>${esc(x.a.name)} vs ${esc(x.b.name)} · ${esc(x.weightClass || '')}</option>`).join('')}</select></div>
     <div class="card"><div class="card-b">
       <div class="face"><div><div class="fname big" style="color:${SA}">${esc(A.name)}</div><div class="big-prob">${pct(b.pA)}</div><div class="note">fair ${esc(b.fair.a)}</div></div>
-        <div class="mid"><div class="note">${esc(b.weightClass || '')} · ${b.rounds} rounds${b.title ? ' · title' : ''}</div><div class="split-bar"><span style="width:${b.pA * 100}%;background:${SA}">${pct(b.pA, 0)}</span><span style="width:${b.pB * 100}%;background:${SB}">${pct(b.pB, 0)}</span></div><div class="note" style="margin-top:6px">Goes the distance ${pct(b.distance, 0)} · finish ${pct(b.insideDistance, 0)}</div></div>
+        <div class="mid"><div class="note">${esc(b.weightClass || '')} · ${b.rounds} rounds${b.title ? ' · title' : ''}</div><div class="split-bar"><span style="width:${b.pA * 100}%;background:${SA}">${pct(b.pA, 0)}</span><span style="width:${b.pB * 100}%;background:${SB}">${pct(b.pB, 0)}</span></div><div class="note" style="margin-top:6px">Goes the distance ${pct(b.distance, 0)} · finish ${pct(b.insideDistance, 0)}</div><div class="leans" style="justify-content:center;padding:10px 0 0">${leanTags(b)}</div></div>
         <div style="text-align:right"><div class="fname big" style="color:${SB}">${esc(B.name)}</div><div class="big-prob">${pct(b.pB)}</div><div class="note">fair ${esc(b.fair.b)}</div></div></div>
     </div></div>
     ${b.stats ? `<div class="card" style="margin-top:16px"><div class="card-h"><h2>Predicted fight stats</h2><span class="sub">Per fighter across ${S.data.sims.toLocaleString()} simulated fights, including early finishes</span></div><div class="card-b stat-grid">
@@ -924,6 +941,13 @@ function storageNote(st) {
   return `<p class="note" style="margin:0 0 12px">${st.saved} card${st.saved === 1 ? '' : 's'} saved before the first bout, ${st.graded} graded so far${st.last ? `. Latest: ${esc(st.last.name)}` : ''}.</p>`;
 }
 async function loadGrades() { try { S.grades = await api('/api/grades'); } catch { S.grades = { events: [] }; } renderAccuracy(); }
+// How the lean indicators did: one row per tier, bouts and how often the lean was right.
+function leanTable(L, withPredicted) {
+  if (!L || ![...L.win, ...L.pace].some(t => t.n)) return '';
+  const row = t => `<tr><td class="l">${esc(t.label)}</td><td>${t.n}</td>${withPredicted ? `<td class="dim">${t.n ? pct(t.predicted, 0) : '—'}</td>` : ''}<td>${t.n ? pct(t.hit / t.n, 0) : '—'}</td></tr>`;
+  const table = (title, rows, did) => `<div class="card"><div class="card-h"><h2>${title}</h2></div><div class="table-wrap" style="border:0;border-radius:0"><table class="data"><thead><tr><th class="l">Indicator</th><th>Bouts</th>${withPredicted ? '<th>Expected</th>' : ''}<th>${did}</th></tr></thead><tbody>${rows.map(row).join('')}</tbody></table></div></div>`;
+  return `<div class="two" style="margin-top:16px">${table('Win lean', L.win, 'Favorite won')}${table('Finish or decision', L.pace.filter(t => t.tier !== 'open'), 'Happened')}</div>`;
+}
 function renderAccuracy() {
   const el = $('#panel-accuracy'); const B = S.backtest, G = S.grades;
   el.innerHTML = `
@@ -936,10 +960,10 @@ function renderAccuracy() {
       <div class="card tile"><div class="lbl">How it ends</div><div class="val">${B.outcome.logLoss.model.toFixed(3)}</div><div class="note">Winner and method error score, lower is better · long-run averages ${B.outcome.logLoss.base.toFixed(3)}</div></div>
       <div class="card tile"><div class="lbl">Goes the distance</div><div class="val">${B.distance.brier.model.toFixed(3)}</div><div class="note">Error score, lower is better · long-run average ${B.distance.brier.base.toFixed(3)} (${pct(B.distance.rate, 0)} went the distance)</div></div></div>
       <div class="two" style="margin-top:16px"><div class="card"><div class="card-h"><h2>Calibration</h2><span class="sub">When the favorite is x%, how often they won</span></div><div class="card-b"><div class="chart" id="calChart"></div></div></div>
-        <div class="card"><div class="card-h"><h2>Event by event</h2></div><div class="table-wrap" style="border:0;border-radius:0;max-height:400px;overflow-y:auto"><table class="data"><thead><tr><th class="l">Date</th><th>Bouts</th><th>Favorites won</th></tr></thead><tbody>${B.perEvent.map(e => `<tr><td class="l">${shortDate(e.date)}</td><td>${e.bouts}</td><td>${e.picksRight} (${pct(e.picksRight / e.bouts, 0)})</td></tr>`).join('')}</tbody></table></div></div></div>` : ''}
+        <div class="card"><div class="card-h"><h2>Event by event</h2></div><div class="table-wrap" style="border:0;border-radius:0;max-height:400px;overflow-y:auto"><table class="data"><thead><tr><th class="l">Date</th><th>Bouts</th><th>Favorites won</th></tr></thead><tbody>${B.perEvent.map(e => `<tr><td class="l">${shortDate(e.date)}</td><td>${e.bouts}</td><td>${e.picksRight} (${pct(e.picksRight / e.bouts, 0)})</td></tr>`).join('')}</tbody></table></div></div></div>${leanTable(B.leans, true)}` : ''}
     <div class="section-head"><h2>Live record</h2><span class="note">The last projection before each card, graded after it.</span></div>
     ${G ? storageNote(G.storage) : ''}
-    ${!G ? '<div class="skel" style="height:120px"></div>' : G.events.length ? `<div class="table-wrap"><table class="data"><thead><tr><th class="l">Event</th><th>Bouts</th><th>Favorites won</th><th data-tip="How far the win chances were from what happened. Lower is better; a coin flip scores 0.693.">Error score</th></tr></thead><tbody>${G.events.map(e => `<tr><td class="l">${esc(e.name)} <span class="muted">${shortDate(e.date)}</span></td><td>${e.bouts}</td><td>${e.picksRight}</td><td>${e.logLoss.toFixed(3)}</td></tr>`).join('')}</tbody></table></div>` : `<div class="card state"><p>${G.storage && !G.storage.connected ? 'The record isn’t available right now.' : 'No graded cards yet. A card is graded a few days after it finishes.'}</p></div>`}`;
+    ${!G ? '<div class="skel" style="height:120px"></div>' : G.events.length ? `<div class="table-wrap"><table class="data"><thead><tr><th class="l">Event</th><th>Bouts</th><th>Favorites won</th><th data-tip="How far the win chances were from what happened. Lower is better; a coin flip scores 0.693.">Error score</th></tr></thead><tbody>${G.events.map(e => `<tr><td class="l">${esc(e.name)} <span class="muted">${shortDate(e.date)}</span></td><td>${e.bouts}</td><td>${e.picksRight}</td><td>${e.logLoss.toFixed(3)}</td></tr>`).join('')}</tbody></table></div>${leanTable(G.leans, false)}` : `<div class="card state"><p>${G.storage && !G.storage.connected ? 'The record isn’t available right now.' : 'No graded cards yet. A card is graded a few days after it finishes.'}</p></div>`}`;
   if (B && $('#calChart')) drawCalibration($('#calChart'), B.calibration);
 }
 

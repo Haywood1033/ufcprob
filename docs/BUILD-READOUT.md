@@ -92,6 +92,23 @@ widened after real data pushed cKO to the old edge.
   The refresh button does the same.
 - **Debutants** show their career record from ESPN. It is display only: the model doesn't use it yet.
 
+## Lean indicators (Nov 2026)
+
+Each bout carries a win lean (Strong lean 65%+, Lean 57–65%, Toss-up, the same thresholds as
+nflprob) and, when the model is firm about it, Finish likely or Decision likely (60%+). They come
+straight from the stored win and distance chances (`lib/lean.js`), so they lock with the card. The
+backtest and the live record report how each tier did.
+
+Checked on the last 150 events (1,825 bouts, each predicted only from earlier bouts):
+
+| Indicator | Bouts | Expected | Happened |
+| --- | --- | --- | --- |
+| Strong lean | 468 | 71% | favorite won 75% |
+| Lean | 615 | 61% | favorite won 66% |
+| Toss-up | 742 | 53% | favorite won 54% |
+| Finish likely | 426 | 67% | finished 70% |
+| Decision likely | 376 | 67% | went the distance 66% |
+
 ## Known limits
 
 - ESPN's feeds are undocumented. Field names were checked against a live probe (`/api/health?probe=1`).

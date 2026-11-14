@@ -14,6 +14,7 @@ ufcprob), each its own repo and Vercel project, sharing the same stack and desig
 - `lib/card.js`: the card and its pre-fight freeze; `lib/lock.js` write-once locks
   (`ufc_snapshots` for the card, `ufc_plays` for Best plays), sealed at the first bout.
 - `lib/plays.js`, `lib/parlay.js`, `lib/book.js`, `lib/dfs.js`, `lib/dfs-optimizer.js`: products.
+- `lib/lean.js`: the lean indicators on each bout (thresholds mirrored in `app.html`).
 - `lib/grading.js`, `lib/backtest.js`: accuracy. `docs/BUILD-READOUT.md`: the model in detail.
 
 ## Rules specific to this app
