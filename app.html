@@ -395,6 +395,9 @@ details.more[open] summary::before { transform: rotate(90deg); }
 /* Fighter photo: initials sit underneath, so a missing or slow photo never leaves a hole. */
 .fpic { position: relative; flex: none; width: 44px; height: 44px; border-radius: 50%; overflow: hidden; background: var(--surface-3); border: 1px solid var(--line-2); display: grid; place-items: center; font-size: 13px; font-weight: 700; color: var(--ink-3); }
 .fpic img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center top; }
+.fpic.lg { width: 72px; height: 72px; font-size: 20px; margin-bottom: 8px; }
+.fpic.right { margin-left: auto; }
+@media (max-width: 720px) { .fpic.lg { width: 56px; height: 56px; font-size: 16px; } }
 .fname { font-weight: 600; font-size: 14px; color: var(--ink-2); }
 .frow.fav .fname { color: var(--ink); }
 .fname.big { font-size: 17px; font-weight: 700; }
@@ -582,10 +585,10 @@ function leanTags(b) {
   return win + pace;
 }
 // Fighter photo from ESPN, over the fighter's initials (shown when there is no photo).
-function photo(f) {
+function photo(f, cls = '') {
   const ini = String(f.name || '').split(/\s+/).filter(Boolean).map(w => w[0]).slice(0, 2).join('').toUpperCase();
   const img = f.espnId ? `<img loading="lazy" decoding="async" referrerpolicy="no-referrer" alt="" src="https://a.espncdn.com/combiner/i?img=/i/headshots/mma/players/full/${encodeURIComponent(f.espnId)}.png&w=160&h=116" onerror="this.remove()">` : '';
-  return `<span class="fpic" aria-hidden="true">${esc(ini)}${img}</span>`;
+  return `<span class="fpic ${cls}" aria-hidden="true">${esc(ini)}${img}</span>`;
 }
 // The bout's scheduled time, in the viewer's own time zone, until it starts. Shown only when the
 // schedule lists a time per bout; if every bout carries the same time it is just the card's start.
@@ -865,9 +868,9 @@ function renderBreakdown() {
   el.innerHTML = `
     <div class="toolbar"><select class="select" id="boutSelect">${S.data.bouts.map(x => `<option value="${esc(x.id)}" ${x.id === S.bout ? 'selected' : ''}>${esc(x.a.name)} vs ${esc(x.b.name)} · ${esc(x.weightClass || '')}</option>`).join('')}</select></div>
     <div class="card"><div class="card-b">
-      <div class="face"><div><div class="fname big" style="color:${SA}">${esc(A.name)}</div><div class="big-prob">${pct(b.pA)}</div><div class="note">fair ${esc(b.fair.a)}</div></div>
+      <div class="face"><div>${photo(A, 'lg')}<div class="fname big" style="color:${SA}">${esc(A.name)}</div><div class="big-prob">${pct(b.pA)}</div><div class="note">fair ${esc(b.fair.a)}</div></div>
         <div class="mid"><div class="note">${esc(b.weightClass || '')} · ${b.rounds} rounds${b.title ? ' · title' : ''}</div><div class="split-bar"><span style="width:${b.pA * 100}%;background:${SA}">${pct(b.pA, 0)}</span><span style="width:${b.pB * 100}%;background:${SB}">${pct(b.pB, 0)}</span></div><div class="note" style="margin-top:6px">Goes the distance ${pct(b.distance, 0)} · finish ${pct(b.insideDistance, 0)}</div><div class="leans" style="justify-content:center;padding:10px 0 0">${leanTags(b)}</div></div>
-        <div style="text-align:right"><div class="fname big" style="color:${SB}">${esc(B.name)}</div><div class="big-prob">${pct(b.pB)}</div><div class="note">fair ${esc(b.fair.b)}</div></div></div>
+        <div style="text-align:right">${photo(B, 'lg right')}<div class="fname big" style="color:${SB}">${esc(B.name)}</div><div class="big-prob">${pct(b.pB)}</div><div class="note">fair ${esc(b.fair.b)}</div></div></div>
     </div></div>
     ${b.stats ? `<div class="card" style="margin-top:16px"><div class="card-h"><h2>Predicted fight stats</h2><span class="sub">Per fighter across ${S.data.sims.toLocaleString()} simulated fights, including early finishes</span></div><div class="card-b stat-grid">
       ${statBlock(b, 'sig', 'Significant strikes landed')}${statBlock(b, 'td', 'Takedowns landed')}</div></div>` : ''}
