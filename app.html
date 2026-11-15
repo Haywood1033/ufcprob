@@ -600,7 +600,7 @@ const amer = a => (a === null || a === undefined ? '' : a > 0 ? `+${a}` : `−${
 const bookName = () => (S.data?.bouts.some(b => b.market) ? 'Vegas' : null);
 function lineTip(b, side) {
   const m = b.market, s = side === 'a' ? m.a : m.b, p = side === 'a' ? m.pA : 1 - m.pA, mine = side === 'a' ? b.pA : b.pB;
-  return `<div class='t'>Vegas line</div><div class='r'>Now <b>${amer(s.ml)}</b></div>${s.open !== null && s.open !== s.ml ? `<div class='r'>Opened <b>${amer(s.open)}</b></div>` : ''}<div class='r'>Vegas win chance <b>${pct(p)}</b></div><div class='r'>Ours <b>${pct(mine)}</b></div>`;
+  return `<div class='t'>Vegas line</div><div class='r'>Now <b>${amer(s.ml)}</b></div>${s.open !== null && s.open !== s.ml ? `<div class='r'>Opened <b>${amer(s.open)}</b></div>` : ''}<div class='r'>Vegas win chance <b>${pct(p)}</b></div>${b.modelPA !== undefined ? `<div class='r'>Our ratings alone <b>${pct(side === 'a' ? b.modelPA : 1 - b.modelPA)}</b></div>` : ''}<div class='r'>Our number, with the line <b>${pct(mine)}</b></div>`;
 }
 // Lean indicators: how firmly the numbers side with the favorite, and whether a finish or a decision
 // is expected. Same thresholds as lib/lean.js, which the Accuracy tab grades.
@@ -650,7 +650,7 @@ function renderCard() {
   const segs = [...new Set(S.data.bouts.map(b => b.segment))];
   el.innerHTML = segs.map(sg => `<div class="section-head"><h2>${esc(sg)}</h2><span class="count">${S.data.bouts.filter(b => b.segment === sg).length} bouts</span></div>
     <div class="bouts">${S.data.bouts.filter(b => b.segment === sg).map(boutCard).join('')}</div>`).join('') +
-    `<p class="note foot">${S.data.frozen ? 'These are the pre-fight numbers, locked at the first bout; results and live status update on top. ' : ''}Win chances are shares of ${S.data.sims.toLocaleString()} simulated fights per bout. Click a bout for the full breakdown. Fighter records count UFC bouts since 2010.${bookName() ? ` The smaller number under each win chance is the Vegas line.` : ''}</p>`;
+    `<p class="note foot">${S.data.frozen ? 'These are the pre-fight numbers, locked at the first bout; results and live status update on top. ' : ''}Win chances are shares of ${S.data.sims.toLocaleString()} simulated fights per bout. Click a bout for the full breakdown. Fighter records count UFC bouts since 2010.${bookName() ? ` The smaller number under each win chance is the Vegas line, which our win chances take into account.` : ''}</p>`;
 }
 
 // ── Odds ─────────────────────────────────────────────────────────────────────────────────
@@ -989,7 +989,7 @@ function leanTable(L, withPredicted) {
 function renderAccuracy() {
   const el = $('#panel-accuracy'); const B = S.backtest, G = S.grades;
   el.innerHTML = `
-    <div class="section-head"><h2>Backtest</h2><span class="note">Every bout predicted only from earlier bouts, then scored against what happened.</span><span style="flex:1"></span><button class="btn ${B ? '' : 'primary'}" id="runBt" ${S.btLoading ? 'disabled' : ''}>${ICON.play} ${S.btLoading ? 'Running…' : B ? 'Re-run' : 'Run backtest'}</button></div>
+    <div class="section-head"><h2>Backtest</h2><span class="note">Every bout predicted only from earlier bouts, then scored against what happened. This tests our ratings on their own; a card’s numbers also use the Vegas line when there is one.</span><span style="flex:1"></span><button class="btn ${B ? '' : 'primary'}" id="runBt" ${S.btLoading ? 'disabled' : ''}>${ICON.play} ${S.btLoading ? 'Running…' : B ? 'Re-run' : 'Run backtest'}</button></div>
     ${S.btErr ? stateHtml('err', 'Backtest failed', 'The backtest endpoint returned an error.', S.btErr) : ''}
     ${!B && !S.btErr ? '<div class="card state"><h3>Not run yet</h3><p>Replays the last 25 events (a few seconds).</p></div>' : ''}
     ${B ? `<div class="tiles">

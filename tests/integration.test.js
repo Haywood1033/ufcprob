@@ -147,3 +147,13 @@ test('live status: a finished bout carries how it ended', async () => {
   assert.equal(lb.round, src.res.round);
   assert.ok(lb.winnerId);
 });
+
+test('card: win chances blend the model with the Vegas line; the model alone is kept beside it', async () => {
+  const { blendWin } = require('../lib/market');
+  const { body } = await call('card');
+  for (const b of body.bouts) {
+    assert.ok(b.modelPA > 0 && b.modelPA < 1);
+    assert.ok(Math.abs(b.pA - blendWin(b.modelPA, b.market.pA, 8)) < 0.02, 'pA is the blend (simulated, so within sampling error)');
+  }
+  assert.ok(body.bouts.some(b => b.why.some(w => w.name === 'Vegas line')));
+});

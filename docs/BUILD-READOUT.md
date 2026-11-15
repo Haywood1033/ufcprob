@@ -100,10 +100,39 @@ time of writing): moneyline now and at open, method of victory, and the round to
 breakdown, and they are the book Best plays ranks against unless prices are pasted. They lock with
 the card, and the live record scores the book's own win chances beside the model's.
 
-The model does not use the lines. On 1,730 past bouts with odds (the public nlbair/ufc-data set,
-BestFightOdds, CC BY 4.0) the closing line scored 0.584 and the opening line 0.605 against the
-model's 0.640 (log loss, lower is better); a blend of model and opening line scored 0.597. So a
-"value" play is where the model disagrees with a sharper market, and should be read that way.
+## Win chances blend the model with the Vegas line (Nov 2026)
+
+When a bout has a line, the win chance on the card is the model's number blended with the line
+(`lib/market.js`): logit(p) = 0.16·logit(model) + 1.13·logit(line) on a line read within two days
+of the first bout, 0.5 and 0.98 on an earlier one. Everything downstream (methods, rounds, DFS,
+parlays, leans, Best plays) is simulated from the blended chance. The model's own number is kept
+on each bout as `modelPA`, and a card with no lines uses the model alone.
+
+Measured on 2,903 bouts from 2021 to Oct 2026 with odds (the public nlbair/ufc-data set,
+BestFightOdds, CC BY 4.0). Every model chance was predicted only from earlier bouts, and the blend
+weights for each year were fit only on earlier years:
+
+| | Log loss | Winner picked |
+| --- | --- | --- |
+| Model alone | 0.648 | 62.5% |
+| Vegas opening line | 0.618 | 64.4% |
+| Vegas closing line | 0.595 | 68.4% |
+| Blend with the opening line | 0.612 | 67.2% |
+| Blend with the closing line | 0.593 | 68.7% |
+
+- Where model and line were 15+ points apart (896 bouts) the line's side won 74.4%, the model's 57.9%.
+- On bouts with a UFC debutant (536) the line scored 0.550, the model 0.655.
+- The fitted weights were stable from year to year (model 0.12–0.20, line 1.09–1.16 on the close).
+- UFC 334 (14 Nov 2026), the card that prompted this: Vegas favorites went 9-3 with one draw. The
+  model alone had sided against the line on Nunes, Belgaroui and Radtke, and all three lost.
+
+What this does not fix: the method and round split still comes from the model alone. The lines'
+method prices and round totals are saved with each locked card from now on, so that can be tested
+once enough cards have them. And with the win chance this close to the line, sides rarely show as
+value against it; Best plays then lists the most likely sides and says so.
+
+The `/api/backtest` replay and the lean table below test the model alone (there is no odds history
+at run time).
 
 ## Lean indicators (Nov 2026)
 

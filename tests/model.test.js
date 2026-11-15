@@ -276,3 +276,15 @@ test('lean indicators: tiers and their summary', () => {
   assert.deepEqual(s.win.map(t => [t.tier, t.n, t.hit]), [['strong', 2, 1], ['lean', 0, 0], ['tossup', 1, 1]]);
   assert.deepEqual(s.pace.map(t => [t.tier, t.n, t.hit]), [['finish', 1, 1], ['decision', 1, 1], ['open', 1, 0]]);
 });
+
+test('market blend: the Vegas line carries most of the weight, and the two sides still sum to one', () => {
+  const { blendWin, CLOSE, OPEN } = require('../lib/market');
+  for (const [m, l] of [[0.6, 0.3], [0.45, 0.67], [0.78, 0.22], [0.5, 0.5]]) {
+    assert.ok(Math.abs(blendWin(m, l, 5) + blendWin(1 - m, 1 - l, 5) - 1) < 1e-12);
+    assert.ok(Math.abs(blendWin(m, l, 5) - l) < Math.abs(blendWin(m, l, 5) - m) || m === l, 'closer to the line than to the model');
+  }
+  assert.ok(blendWin(0.78, 0.22, 5) < 0.3, 'a model favorite the market makes a clear underdog is an underdog');
+  assert.ok(blendWin(0.7, 0.4, 100) > blendWin(0.7, 0.4, 5), 'an early line leaves the model more say');
+  assert.equal(blendWin(0.61, null, 5), 0.61, 'no line: the model alone');
+  assert.ok(CLOSE.line > CLOSE.model && OPEN.line > OPEN.model);
+});
