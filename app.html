@@ -561,14 +561,35 @@ function renderHero() {
 
 // ── This card ────────────────────────────────────────────────────────────────────────────
 function liveFor(b) { const l = S.live?.get(b.id) || b.live; return l; }
-// A finished bout in words. The winner is named only when the result says who it was (never
-// guessed); method, round and time appear as each becomes known.
-function resultText(b, res, l) {
-  if (res.draw) return 'Draw';
-  if (res.nc) return 'No contest';
-  const who = res.winner === b.a.id ? b.a.name : res.winner === b.b.id ? b.b.name : l?.winner || null;
-  const how = [res.method, res.round ? `R${res.round}` : '', res.time !== null && res.time !== undefined ? clock(res.time) : ''].filter(Boolean).join(' ');
-  return [who || 'Final', how].filter(Boolean).join(' · ');
+// How a bout was won, in plain words, from the history's method ("Decision - Split", "KO/TKO",
+// "TKO - Doctor's Stoppage") or ESPN's result text.
+function methodWords(m) {
+  const s = String(m || '').trim(), u = s.toUpperCase().replace(/[-_]+/g, ' ');
+  if (!s) return null;
+  if (/DQ|DISQ/.test(u)) return 'disqualification';
+  if (/SUB/.test(u)) return 'submission';
+  if (/DEC/.test(u)) return /SPLIT|\bS DEC/.test(u) ? 'split decision' : /MAJ|\bM DEC/.test(u) ? 'majority decision' : /UNAN|\bU DEC/.test(u) ? 'unanimous decision' : 'decision';
+  if (/KO/.test(u)) return 'KO/TKO';
+  return s.toLowerCase();
+}
+// A finished bout: who won and how ("Ciryl Gane by KO/TKO · R2 3:15"), and whether our pick (the
+// fighter we gave the better chance before the fight) won. The winner is named only when the
+// result says who it was, never guessed. `res` is the stored result, `l` ESPN's live status.
+const sameName = (x, y) => { const n = v => String(v || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z ]/g, '').trim(); return !!n(x) && n(x) === n(y); };
+function resultInfo(b, res, l) {
+  if (res?.draw) return { text: 'Draw', cls: '' };
+  if (res?.nc) return { text: 'No contest', cls: '' };
+  const lw = l?.state === 'post' ? l : null;
+  const side = res?.winner === b.a.id ? 'a' : res?.winner === b.b.id ? 'b'
+    : lw?.winnerId && lw.winnerId === b.a.espnId ? 'a' : lw?.winnerId && lw.winnerId === b.b.espnId ? 'b'
+    : sameName(lw?.winner, b.a.name) ? 'a' : sameName(lw?.winner, b.b.name) ? 'b' : null;
+  const how = methodWords(res?.method || lw?.result), round = res?.round || lw?.round, time = res?.time;
+  const finish = how && !/decision/.test(how);
+  const when = finish && round ? ` · R${round}${time !== null && time !== undefined ? ` ${clock(time)}` : lw?.clock && !res ? ` ${lw.clock}` : ''}` : '';
+  if (!side) return { text: `Final${how ? ` · ${how}` : ''}${when}`, cls: '' };
+  const pick = b.pA >= b.pB ? 'a' : 'b', right = side === pick, f = b[side], p = pick === 'a' ? b.pA : b.pB;
+  return { text: `${right ? '✓' : '✗'} ${f.name}${how ? ` by ${how}` : ' won'}${when}`, cls: right ? 'pos' : 'neg',
+    tip: `${right ? 'We had this one' : 'We missed this one'}: our pick was ${b[pick].name} at ${pct(p, 0)}.` };
 }
 // "3-1 UFC", or for a first UFC fight the career record: "UFC debut · 15-4 pro".
 const proRec = f => (f.proRecord ? String(f.proRecord).replace(/-0$/, '') : null);
@@ -610,8 +631,9 @@ function boutTime(b, res, l) {
 function boutCard(b) {
   const l = liveFor(b), res = b.result;
   const fav = b.pA >= b.pB ? 'a' : 'b';
-  const status = res ? `<span class="tag ${res.nc || res.draw ? '' : 'pos'}">${esc(resultText(b, res, l))}</span>`
-    : l?.state === 'in' ? `<span class="tag pos"><span class="live-dot"></span>${esc(l.detail || `R${l.round}`)}</span>` : l?.state === 'post' ? `<span class="tag pos">${esc(l.winner ? `${l.winner} wins` : 'Final')}${l.result ? ` · ${esc(l.result)}` : ''}</span>` : '';
+  const done = res || l?.state === 'post' ? resultInfo(b, res, l) : null;
+  const status = done ? `<span class="tag ${done.cls}"${done.tip ? ` data-tip="${esc(done.tip)}"` : ''}>${esc(done.text)}</span>`
+    : l?.state === 'in' ? `<span class="tag info"><span class="live-dot"></span>${esc(l.detail || `R${l.round}`)}</span>` : '';
   const row = (f, p, side) => `<div class="frow ${side === fav ? 'fav' : ''}"><div class="who">${photo(f)}<div><div class="fname">${esc(f.name)}</div><div class="psub">${esc(recLine(f))} · Rating ${f.elo}${f.age ? ` · ${f.age.toFixed(0)} yrs` : ''}</div></div></div><div class="fnum"><div class="fprob">${probOut(p)}</div>${b.market ? `<div class="fline" data-tip="${esc(lineTip(b, side))}">${amer(b.market[side].ml)}</div>` : ''}</div></div>`;
   return `<div class="card bout" data-bout="${esc(b.id)}" tabindex="0">
     <div class="bout-h"><span>${esc(b.weightClass || 'Bout')}${b.title ? ' <span class="tag warn">Title</span>' : ''}</span><span>${boutTime(b, res, l)}${b.rounds} rounds</span></div>

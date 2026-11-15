@@ -162,6 +162,12 @@ function installMockFetch({ now, live = false } = {}) {
       return ok({ events: events.filter(e => e.date >= from && e.date <= to).map(e => espnEvent(e, { live })) });
     }
     if ((m = u.match(/leagues\/ufc\/events\/\d+\/competitions\/(\d+)$/))) return bySeg.has(m[1]) ? ok({ id: m[1], cardSegment: { description: bySeg.get(m[1]) } }) : notFound;
+    if ((m = u.match(/leagues\/ufc\/events\/\d+\/competitions\/(\d+)\/status/))) {
+      const r = byComp.get(m[1])?.res;
+      if (!r) return notFound;
+      const name = r.method === 'KO/TKO' ? 'KO/TKO' : r.method === 'SUB' ? 'Submission' : 'Decision - Unanimous';
+      return ok({ period: r.round, displayClock: `${Math.floor(r.time / 60)}:${String(r.time % 60).padStart(2, '0')}`, type: { state: 'post', completed: true }, result: { name: name.toLowerCase().replace(/[^a-z]+/g, '-'), displayName: name } });
+    }
     if ((m = u.match(/leagues\/ufc\/events\/\d+\/competitions\/(\d+)\/odds/))) return byComp.has(m[1]) && !byComp.get(m[1]).res ? ok(oddsFor(byComp.get(m[1]))) : notFound;
     if ((m = u.match(/mma\/athletes\/(\d+)$/))) {
       const f = byEspn.get(m[1]);

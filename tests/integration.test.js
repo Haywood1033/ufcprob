@@ -137,3 +137,13 @@ test('sportsbook lines: ESPN odds parsing', () => {
   assert.equal(parseOdds({ items: [] }), null);
   assert.equal(parseOdds({ items: [{ awayAthleteOdds: { moneyLine: 120, athlete: ref(1) } }] }), null, 'needs a line for both fighters');
 });
+
+test('live status: a finished bout carries how it ended', async () => {
+  const done = world.events.filter(e => e.done).at(-1);
+  const { body } = await call('live', { query: { date: done.date } });
+  const src = done.bouts[0], lb = body.events[0].bouts.find(x => x.names.includes(src.a.name));
+  assert.equal(lb.completed, true);
+  assert.equal(lb.result, src.res.method === 'KO/TKO' ? 'KO/TKO' : src.res.method === 'SUB' ? 'Submission' : 'Decision - Unanimous');
+  assert.equal(lb.round, src.res.round);
+  assert.ok(lb.winnerId);
+});
