@@ -134,6 +134,41 @@ value against it; Best plays then lists the most likely sides and says so.
 The `/api/backtest` replay and the lean table below test the model alone (there is no odds history
 at run time).
 
+## Fantasy points (Nov 2026)
+
+The simulator's fantasy scoring was wrong for DraftKings and has been rebuilt (`lib/simulator.js`):
+
+- **Scoring:** every strike 0.2 and a significant strike another 0.2, takedown 5, reversal 5,
+  knockdown 10, control 0.03 a second, plus the win bonus. Before, only significant strikes
+  scored (at 0.2), reversals didn't, and control was guessed from takedowns.
+- **Stats:** each fighter now carries rates for non-significant strikes, control time and
+  reversals from the history (`othF15`, `ctrlF15`, `revF15` and the against versions), matched
+  up against the opponent like the other rates.
+- **Winners and losers:** each stat is multiplied by one factor when the fighter wins and
+  another when they lose (`TUNE`), fitted so simulated winners and losers match real ones:
+  significant strikes 1.11 / 0.79, other strikes 1.25 / 0.78, takedowns 1.31 / 0.69, control
+  1.40 / 0.675.
+
+Checked on the last 100 events (2,464 fighter-bouts), every projection made only from earlier
+bouts, scored against the real stats with the scoring above:
+
+| | Old scoring, model alone | New scoring, blended win chance |
+| --- | --- | --- |
+| Average projection (real average 59.5) | 45.3 | 58.8 |
+| Correlation with real points | 0.355 | 0.476 |
+| Average miss per fighter | 35.2 | 30.7 |
+| Best lineup by projection: real points | 402 | 420 |
+| Lineups scoring 400+ | 51% | 56% |
+
+- Real winners averaged 96.2 points and losers 22.7; the simulation gives 93.8 and 23.9.
+- On the 100 events before those (not used to fit the factors): projection 59.2 against a real
+  60.5, correlation 0.438, best lineup 443 points.
+- Lineups there use salaries approximated from the closing line (each bout's pair sums to
+  $16,200), since there is no history of real salaries. Treat the lineup rows as a comparison
+  between versions, not as a forecast of real contests.
+- The best lineup by projection held 3.4 winners of 6 on average; a lineup built with perfect
+  hindsight averaged 654 points. A single lineup rarely gets six winners, whatever the projections.
+
 ## Lean indicators (Nov 2026)
 
 Each bout carries a win lean (Strong lean 65%+, Lean 57–65%, Toss-up, the same thresholds as
@@ -156,7 +191,5 @@ Checked on the last 150 events (1,825 bouts, each predicted only from earlier bo
 - ESPN's feeds are undocumented. Field names were checked against a live probe (`/api/health?probe=1`).
 - The dataset updates weekly, so a card from the last few days may show ESPN's winner before the
   method, round and time arrive.
-- Control time is now real in history; DFS control points in the simulation are still modelled
-  from takedowns.
 - Mid-card the odds stay at pre-fight values; live status is display only.
-- DFS scoring follows the common Classic format; check it against your site.
+- DFS scoring follows DraftKings Classic as described above; check it against your site's rules page.

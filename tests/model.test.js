@@ -46,7 +46,7 @@ test('dataset: bouts with the winner first, round stats summed, control time, id
     assert.equal(b.result, 'a');
     assert.equal(b.rounds, 5);
     assert.equal(b.endTime, src.res.time);
-    assert.deepEqual(b.stats.a, { kd: src.res.stW.kd, sig: src.res.stW.sig, td: src.res.stW.td, sub: src.res.stW.sub, ctrl: src.res.stW.td * 45 });
+    assert.deepEqual(b.stats.a, { kd: src.res.stW.kd, sig: src.res.stW.sig, str: src.res.stW.sig, td: src.res.stW.td, sub: src.res.stW.sub, rev: 0, ctrl: src.res.stW.td * 45 });
     // Fighters missing from the tale-of-the-tape file keep a name id; everyone else has their URL id.
     const noTott = new Set(w.fighters.filter((f, i) => w.NO_TOTT.has(i)).map(f => `n:${f.name.toLowerCase()}`));
     assert.ok(d.bouts.every(x => [x.a.id, x.b.id].every(id => /^[0-9a-f]{16}$/.test(id) || noTott.has(id))));
@@ -287,4 +287,19 @@ test('market blend: the Vegas line carries most of the weight, and the two sides
   assert.ok(blendWin(0.7, 0.4, 100) > blendWin(0.7, 0.4, 5), 'an early line leaves the model more say');
   assert.equal(blendWin(0.61, null, 5), 0.61, 'no line: the model alone');
   assert.ok(CLOSE.line > CLOSE.model && OPEN.line > OPEN.model);
+});
+
+test('fantasy scoring: every strike counts, significant ones double, plus reversals and real control', () => {
+  const { SCORING, TUNE } = require('../lib/simulator');
+  assert.equal(SCORING.strike + SCORING.sig, 0.4);
+  assert.deepEqual([SCORING.td, SCORING.rev, SCORING.kd, SCORING.ctrlSec, SCORING.decision, SCORING.quick], [5, 5, 10, 0.03, 30, 25]);
+  assert.deepEqual(SCORING.win, [90, 70, 45, 40, 40]);
+  for (const k of ['sig', 'oth', 'td', 'ctrl']) assert.ok(TUNE[k][0] > 1 && TUNE[k][1] < 1, 'winners get more of each stat than losers');
+  // A fighter with strikes, control and reversals in their history scores from all of them.
+  const st = { sigF15: 60, sigA15: 60, tdF15: 1, tdA15: 1, kdF15: 0.2, kdA15: 0.2, subF15: 0.5, subA15: 0.5, othF15: 30, othA15: 30, ctrlF15: 150, ctrlA15: 150, revF15: 0.3 };
+  const f = id => ({ id, style: st }), cls = { sig15: 60, td15: 1, kd15: 0.2, oth15: 30, ctrl15: 150 };
+  const haz = { ko: 0.01, sub: 0.005, later: 0.75 };
+  const [sim] = simulateCard([{ id: 'x', rounds: 3, pA: 0.5, hazA: haz, hazB: haz, A: f('a'), B: f('b'), cls }], { sims: 4000, seed: 9 });
+  let oth = 0, ctl = 0; for (let k = 0; k < sim.sims; k++) { oth += sim.othA[k]; ctl += sim.ctlA[k]; assert.ok(sim.ctlA[k] + sim.ctlB[k] <= sim.elapsed[k] + 1e-3, 'control never exceeds the fight'); }
+  assert.ok(oth / sim.sims > 5 && ctl / sim.sims > 30);
 });
